@@ -1,9 +1,9 @@
-
 import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { Bell, User, Search, Plus, Info, Clock, CheckCircle, LogOut } from "lucide-react";
 import { LayoutDashboard, Ticket, BookOpen, BarChart2 } from "lucide-react";
 import { initializeApp } from "firebase/app";
+import Chatbot from './chatbot';
 import { 
   getAuth, 
   createUserWithEmailAndPassword, 
@@ -704,7 +704,6 @@ export default function ITHelpDesk() {
     );
   };
 
-
 const renderTickets = () => {
   if (!isInitialized) {
     return <div className="p-6 text-center">Initializing application...</div>;
@@ -1223,6 +1222,9 @@ return (
         </div>
       </div>
     </div>
+
+    {/* Add the Chatbot component here */}
+    <Chatbot />
   </div>
 );
 }
