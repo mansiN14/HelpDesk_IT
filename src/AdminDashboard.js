@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { getFirestore, collection, getDocs, query, orderBy, doc, updateDoc } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
 import { Clock, Users, AlertTriangle, Check, Map, BarChart, Monitor, Cpu, Laptop, Award, Phone, Menu, X } from 'lucide-react';
@@ -44,36 +44,220 @@ const initialTickets = [
   // Add more tickets as needed
 ];
 
-const floorConfig = {
-  S1: {
-    systems: [
-      { id: "S1-01" }, { id: "S1-02" }, { id: "S1-03" }, { id: "S1-04" }, { id: "S1-05" },
-      { id: "S1-06" }, { id: "S1-07" }, { id: "S1-08" }, { id: "S1-09" }, { id: "S1-10" }
-    ],
-    cabins: [
-      { id: 1, systems: [{ id: "S1-C1-01" }, { id: "S1-C1-02" }, { id: "S1-C1-03" }, { id: "S1-C1-04" }, { id: "S1-C1-05" }] },
-      { id: 2, systems: [{ id: "S1-C2-01" }, { id: "S1-C2-02" }, { id: "S1-C2-03" }, { id: "S1-C2-04" }, { id: "S1-C2-05" }] }
-    ]
-  },
-  S2: {
-    systems: [
-      { id: "S2-01" }, { id: "S2-02" }, { id: "S2-03" }, { id: "S2-04" }, { id: "S2-05" },
-      { id: "S2-06" }, { id: "S2-07" }, { id: "S2-08" }, { id: "S2-09" }, { id: "S2-10" }
-    ],
-    cabins: [
-      { id: 1, systems: [{ id: "S2-C1-01" }, { id: "S2-C1-02" }, { id: "S2-C1-03" }, { id: "S2-C1-04" }, { id: "S2-C1-05" }] },
-      { id: 2, systems: [{ id: "S2-C2-01" }, { id: "S2-C2-02" }, { id: "S2-C2-03" }, { id: "S2-C2-04" }, { id: "S2-C2-05" }] }
-    ]
-  },
-  S3: {
-    systems: [],
-    cabins: []
-  },
-  S4: {
-    systems: [],
-    cabins: []
-  }
+const defaultLayoutConfig = {
+  totalWorkstations: 415,
+  totalMeetingRooms: 11,
+  totalMDCabins: 4,
+  totalTechnicalWS: 26,
+  totalConferenceRooms: 2,
+  totalTeamLeadTables: 1,
+  gridWidth: 30,
+  gridHeight: 20,
+  clusterSize: 6,
+  aisleWidth: 2,
 };
+
+const spaceTypes = {
+  WORKSTATION: { prefix: 'WS', color: '#e3f2fd', borderColor: '#1976d2', range: 'WS001-WS415', total: 415 },
+  MEETING_ROOM: { prefix: 'MR', color: '#f3e5f5', borderColor: '#7b1fa2', range: 'MR01-MR11', total: 11 },
+  MD_CABIN: { prefix: 'CB', color: '#fff3e0', borderColor: '#f57c00', range: 'CB01-CB04', total: 4 },
+  TECHNICAL_WS: { prefix: 'TWS', color: '#e8f5e8', borderColor: '#388e3c', range: 'TWS01-TWS26', total: 26 },
+  CONFERENCE: { prefix: 'CO', color: '#ffebee', borderColor: '#d32f2f', range: 'CO01-CO02', total: 2 },
+  TEAM_LEAD: { prefix: 'TL', color: '#f1f8e9', borderColor: '#689f38', range: 'TL01', total: 1 },
+  CORRIDOR: { prefix: 'CORRIDOR', color: '#f5f5f5', borderColor: '#bdbdbd' },
+  AMENITY: { prefix: 'AMENITY', color: '#fafafa', borderColor: '#9e9e9e' },
+  EMPTY: { prefix: 'EMPTY', color: 'transparent', borderColor: 'transparent' }
+};
+
+
+// Layout generator as a hook
+function useOfficeLayout(config) {
+  return useMemo(() => {
+    // ...copy your generateLayout logic here, but use plain JS, not template literals...
+    const grid = Array(config.gridHeight).fill(null).map(() =>
+      Array(config.gridWidth).fill(null).map(() => ({ type: 'EMPTY', id: null }))
+    );
+
+    let wsCounter = 1, mrCounter = 1, mdCounter = 1, twsCounter = 1, coCounter = 1, tlCounter = 1;
+
+    // Corridors
+    const mainCorridorRow = Math.floor(config.gridHeight / 2);
+    for (let col = 0; col < config.gridWidth; col++) {
+      for (let offset = 0; offset < config.aisleWidth; offset++) {
+        if (mainCorridorRow + offset < config.gridHeight) {
+          grid[mainCorridorRow + offset][col] = { type: 'CORRIDOR', id: 'MAIN_CORRIDOR' };
+        }
+      }
+    }
+    const mainCorridorCol = Math.floor(config.gridWidth / 2);
+    for (let row = 0; row < config.gridHeight; row++) {
+      for (let offset = 0; offset < config.aisleWidth; offset++) {
+        if (mainCorridorCol + offset < config.gridWidth) {
+          grid[row][mainCorridorCol + offset] = { type: 'CORRIDOR', id: 'MAIN_CORRIDOR' };
+        }
+      }
+    }
+
+    // Amenities
+    const amenityPositions = [
+      { row: 2, col: 5, id: 'COFFEE_MACHINE' },
+      { row: 2, col: config.gridWidth - 6, id: 'TV_65_1' },
+      { row: config.gridHeight - 3, col: 8, id: 'TV_65_2' },
+    ];
+    amenityPositions.forEach(pos => {
+      if (pos.row < config.gridHeight && pos.col < config.gridWidth) {
+        grid[pos.row][pos.col] = { type: 'AMENITY', id: pos.id };
+      }
+    });
+
+    // MD Cabins
+    const mdPositions = [
+      { row: 1, col: 1 },
+      { row: 1, col: config.gridWidth - 3 },
+      { row: config.gridHeight - 3, col: 1 },
+      { row: config.gridHeight - 3, col: config.gridWidth - 3 },
+    ];
+    mdPositions.slice(0, config.totalMDCabins).forEach(pos => {
+      if (grid[pos.row][pos.col].type === 'EMPTY') {
+        grid[pos.row][pos.col] = {
+          type: 'MD_CABIN',
+          id: `${spaceTypes.MD_CABIN.prefix}-${String(mdCounter).padStart(2, '0')}`
+        };
+        mdCounter++;
+      }
+    });
+
+    // Conference Rooms
+    const conferencePositions = [
+      { row: 3, col: 2, width: 3, height: 2 },
+      { row: config.gridHeight - 5, col: config.gridWidth - 5, width: 3, height: 2 },
+    ];
+    conferencePositions.slice(0, config.totalConferenceRooms).forEach(pos => {
+      for (let r = pos.row; r < pos.row + pos.height && r < config.gridHeight; r++) {
+        for (let c = pos.col; c < pos.col + pos.width && c < config.gridWidth; c++) {
+          if (grid[r][c].type === 'EMPTY') {
+            grid[r][c] = {
+              type: 'CONFERENCE',
+              id: `${spaceTypes.CONFERENCE.prefix}-${String(coCounter).padStart(2, '0')}`
+            };
+          }
+        }
+      }
+      coCounter++;
+    });
+
+    // Meeting Rooms
+    let mrPlaced = 0;
+    for (let row = 0; row < config.gridHeight && mrPlaced < config.totalMeetingRooms; row++) {
+      for (let col = 0; col < config.gridWidth && mrPlaced < config.totalMeetingRooms; col++) {
+        if (grid[row][col].type === 'EMPTY') {
+          const nearCorridor = [
+            [-1, 0], [1, 0], [0, -1], [0, 1]
+          ].some(([dr, dc]) => {
+            const newRow = row + dr;
+            const newCol = col + dc;
+            return newRow >= 0 && newRow < config.gridHeight &&
+              newCol >= 0 && newCol < config.gridWidth &&
+              grid[newRow][newCol].type === 'CORRIDOR';
+          });
+          if (nearCorridor && Math.random() > 0.7) {
+            grid[row][col] = {
+              type: 'MEETING_ROOM',
+              id: `${spaceTypes.MEETING_ROOM.prefix}-${String(mrCounter).padStart(2, '0')}`
+            };
+            mrCounter++;
+            mrPlaced++;
+          }
+        }
+      }
+    }
+
+    // Team Lead
+    let tlPlaced = 0;
+    for (let row = 0; row < config.gridHeight && tlPlaced < config.totalTeamLeadTables; row++) {
+      for (let col = 0; col < config.gridWidth && tlPlaced < config.totalTeamLeadTables; col++) {
+        if (grid[row][col].type === 'EMPTY' && Math.random() > 0.95) {
+          grid[row][col] = {
+            type: 'TEAM_LEAD',
+            id: `${spaceTypes.TEAM_LEAD.prefix}-${String(tlCounter).padStart(2, '0')}`
+          };
+          tlCounter++;
+          tlPlaced++;
+        }
+      }
+    }
+
+    // Technical WS
+    let twsPlaced = 0;
+    for (let row = 0; row < config.gridHeight && twsPlaced < config.totalTechnicalWS; row++) {
+      for (let col = 0; col < config.gridWidth && twsPlaced < config.totalTechnicalWS; col++) {
+        if (grid[row][col].type === 'EMPTY') {
+          let canPlaceCluster = true;
+          const clusterPositions = [];
+          for (let r = row; r < row + 2 && r < config.gridHeight; r++) {
+            for (let c = col; c < col + 3 && c < config.gridWidth; c++) {
+              if (grid[r][c].type !== 'EMPTY') {
+                canPlaceCluster = false;
+                break;
+              }
+              clusterPositions.push([r, c]);
+            }
+            if (!canPlaceCluster) break;
+          }
+          if (canPlaceCluster && clusterPositions.length >= 4 && Math.random() > 0.8) {
+            clusterPositions.slice(0, Math.min(6, config.totalTechnicalWS - twsPlaced)).forEach(([r, c]) => {
+              grid[r][c] = {
+                type: 'TECHNICAL_WS',
+                id: `${spaceTypes.TECHNICAL_WS.prefix}-${String(twsCounter).padStart(2, '0')}`
+              };
+              twsCounter++;
+              twsPlaced++;
+            });
+          }
+        }
+      }
+    }
+
+    // Workstations
+    let wsPlaced = 0;
+    for (let row = 0; row < config.gridHeight && wsPlaced < config.totalWorkstations; row++) {
+      for (let col = 0; col < config.gridWidth && wsPlaced < config.totalWorkstations; col++) {
+        if (grid[row][col].type === 'EMPTY') {
+          const clusterPositions = [];
+          let canPlaceCluster = true;
+          for (let r = row; r < row + 2 && r < config.gridHeight; r++) {
+            for (let c = col; c < col + Math.ceil(config.clusterSize / 2) && c < config.gridWidth; c++) {
+              if (grid[r][c].type !== 'EMPTY') {
+                canPlaceCluster = false;
+                break;
+              }
+              clusterPositions.push([r, c]);
+            }
+            if (!canPlaceCluster) break;
+          }
+          if (canPlaceCluster && clusterPositions.length >= 2) {
+            clusterPositions.slice(0, Math.min(config.clusterSize, config.totalWorkstations - wsPlaced)).forEach(([r, c]) => {
+              grid[r][c] = {
+                type: 'WORKSTATION',
+                id: `${spaceTypes.WORKSTATION.prefix}-${String(wsCounter).padStart(3, '0')}`
+              };
+              wsCounter++;
+              wsPlaced++;
+            });
+          } else if (grid[row][col].type === 'EMPTY' && wsPlaced < config.totalWorkstations) {
+            grid[row][col] = {
+              type: 'WORKSTATION',
+              id: `${spaceTypes.WORKSTATION.prefix}-${String(wsCounter).padStart(3, '0')}`
+            };
+            wsCounter++;
+            wsPlaced++;
+          }
+        }
+      }
+    }
+    return grid;
+  }, [config]);
+}
 
 // Main Admin App Component
 export default function AdminDashboard({ user, onLogout }) {
@@ -83,6 +267,8 @@ export default function AdminDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('map');
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [layoutConfig, setLayoutConfig] = useState(defaultLayoutConfig);
+  const officeLayout = useOfficeLayout(layoutConfig);
 
   // Fetch all tickets for admin
   useEffect(() => {
@@ -252,11 +438,11 @@ export default function AdminDashboard({ user, onLogout }) {
           <main className="flex-1 p-2 sm:p-4 md:p-6 overflow-auto">
             {activeTab === 'map' && (
               <FloorView
-                currentFloor={currentFloor}
-                setCurrentFloor={setCurrentFloor}
                 tickets={tickets}
-                floorConfig={floorConfig}
+                officeLayout={officeLayout}
                 setSelectedTicket={handleTicketSelect}
+                layoutConfig={layoutConfig}
+                setLayoutConfig={setLayoutConfig}
               />
             )}
             {activeTab === 'tickets' && (
@@ -365,7 +551,7 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
             <h3 className="font-medium text-xs md:text-sm mb-2 text-purple-400">System Status</h3>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs md:text-sm">Active Tickets:</span>
-              <span className="bg-red-500 text-white px-2 py-0.5 rounded-md text-xs font-medium">3</span>
+              <span className="bg-red-500 text-white px-2 py-0.5 rounded-md text-xs font-medium"></span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs md:text-sm">System Online:</span>
@@ -381,18 +567,39 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
   );
 }
 
-// FloorView Component - Updated with responsive layout
-function FloorView({ currentFloor, setCurrentFloor, tickets, floorConfig, setSelectedTicket }) {
-  const floorTabs = Object.keys(floorConfig);
-
-  // Function to check if a system has an open ticket
+// FloorView Component - Updated with proper prop handling
+function FloorView({ tickets, officeLayout, setSelectedTicket, layoutConfig, setLayoutConfig }) {
+  const [activeView, setActiveView] = useState('all');
+  
+  // Add these two functions
   const getSystemStatus = (systemId) => {
     const ticket = tickets.find(t => t.deviceId === systemId && t.status !== 'resolved');
     if (!ticket) return 'available';
     return ticket.status;
   };
 
-  // Function to handle clicking on a system
+  // Utility to remove duplicate devices by id
+  const dedupeDevices = (devices) => {
+    const seen = new Set();
+    return devices.filter(device => {
+      if (!device.id || seen.has(device.id)) return false;
+      seen.add(device.id);
+      return true;
+    });
+  };
+
+  // Add getAllDevices function
+  const getAllDevices = () => {
+    if (!officeLayout) return [];
+    
+    // Flatten and filter, then dedupe by id
+    const devices = officeLayout.flat().filter(cell =>
+      cell.type !== 'EMPTY' &&
+      cell.type !== 'CORRIDOR' &&
+      cell.type !== 'AMENITY'
+    );
+    return dedupeDevices(devices);
+  };
   const handleSystemClick = (systemId) => {
     const ticket = tickets.find(t => t.deviceId === systemId && t.status !== 'resolved');
     if (ticket) {
@@ -400,18 +607,74 @@ function FloorView({ currentFloor, setCurrentFloor, tickets, floorConfig, setSel
     }
   };
 
-  // Helper to get ticket for a device
-  const getDeviceTicket = (deviceId) => {
-    return tickets.find(
-      t => t.deviceId === deviceId && t.status !== "Resolved"
-    );
-  };
-
-  // Example rendering for devices:
-  const devices = [
-    ...floorConfig[currentFloor].systems,
-    ...floorConfig[currentFloor].cabins.flatMap(cabin => cabin.systems)
+  const viewTabs = [
+    { id: 'all', label: 'All Devices', icon: <Monitor size={16} /> },
+    { id: 'workstations', label: 'Workstations', icon: <Laptop size={16} /> },
+    { id: 'meeting', label: 'Meeting Rooms', icon: <Users size={16} /> },
+    { id: 'cabins', label: 'Cabins', icon: <Award size={16} /> },
+    { id: 'technical', label: 'Technical', icon: <Cpu size={16} /> },
+    { id: 'conference', label: 'Conference', icon: <Users size={16} /> },
+    { id: 'teamlead', label: 'Team Lead', icon: <Award size={16} /> }
   ];
+
+  // In the FloorView component, update the getFilteredDevices function:
+  const getFilteredDevices = (devices, activeView) => {
+    if (!devices) return [];
+
+    switch (activeView) {
+      case 'workstations':
+        return devices.filter(device =>
+          device.type === 'WORKSTATION' &&
+          device.id?.startsWith('WS') &&
+          !device.id?.startsWith('TWS') &&
+          !device.id?.startsWith('CO') // Extra safety: exclude conference
+        );
+      case 'meeting':
+        return devices.filter(device =>
+          device.type === 'MEETING_ROOM' &&
+          device.id?.startsWith('MR') &&
+          !device.id?.startsWith('CO')
+        );
+      case 'cabins':
+        return devices.filter(device =>
+          device.type === 'MD_CABIN' &&
+          device.id?.startsWith('CB') &&
+          !device.id?.startsWith('CO')
+        );
+      case 'technical':
+        return devices.filter(device =>
+          device.type === 'TECHNICAL_WS' &&
+          device.id?.startsWith('TWS') &&
+          !device.id?.startsWith('CO')
+        );
+      case 'conference':
+        return devices.filter(device =>
+          device.type === 'CONFERENCE' &&
+          device.id?.startsWith('CO')
+        );
+      case 'teamlead':
+        return devices.filter(device =>
+          device.type === 'TEAM_LEAD' &&
+          device.id?.startsWith('TL') &&
+          !device.id?.startsWith('CO')
+        );
+      case 'all':
+        return devices.filter(device => {
+          const id = device.id || '';
+          const type = device.type;
+          return (
+            (type === 'WORKSTATION' && id.startsWith('WS') && !id.startsWith('TWS') && !id.startsWith('CO')) ||
+            (type === 'MEETING_ROOM' && id.startsWith('MR') && !id.startsWith('CO')) ||
+            (type === 'MD_CABIN' && id.startsWith('CB') && !id.startsWith('CO')) ||
+            (type === 'TECHNICAL_WS' && id.startsWith('TWS') && !id.startsWith('CO')) ||
+            (type === 'CONFERENCE' && id.startsWith('CO')) ||
+            (type === 'TEAM_LEAD' && id.startsWith('TL') && !id.startsWith('CO'))
+          );
+        });
+      default:
+        return [];
+    }
+  };
 
   return (
     <div className="bg-gray-800 rounded-xl shadow-xl p-3 sm:p-4 md:p-6 border border-gray-700">
@@ -420,141 +683,61 @@ function FloorView({ currentFloor, setCurrentFloor, tickets, floorConfig, setSel
           <Map size={20} className="text-purple-400 mr-2 md:mr-3" />
           Floor Map
         </h2>
-        
-        {/* Floor Selection Tabs - Responsive */}
-        <div className="flex flex-wrap bg-gray-900 p-1 rounded-xl mb-4 md:mb-8 mx-auto border border-gray-700">
-          {floorTabs.map(floor => (
-            <button
-              key={floor}
-              onClick={() => setCurrentFloor(floor)}
-              className={`flex-1 py-2 md:py-3 rounded-lg transition-all duration-300 min-w-16 ${
-                currentFloor === floor
-                ? 'bg-purple-600 text-white font-medium shadow-lg transform scale-105'
-                : 'hover:bg-gray-800 text-gray-400'
-              }`}
-            >
-              <div className="flex flex-col items-center justify-center">
-                <span className="text-sm md:text-lg font-medium">Floor {floor}</span>
-                <span className="text-xs mt-1 opacity-75">
-                  {tickets.filter(t => t.floor === floor && t.status !== 'resolved').length} active
-                </span>
-              </div>
-            </button>
+      </div>
+
+      {/* View Selection Tabs */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        {viewTabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveView(tab.id)}
+            className={`flex items-center px-3 py-2 rounded-lg text-sm ${
+              activeView === tab.id
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <span className="mr-2">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Devices Grid */}
+      <div className="bg-gray-900 rounded-xl p-4 border border-gray-700">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+          {getFilteredDevices(getAllDevices(), activeView).map(device => (
+            <OfficeDesk
+              key={device.id}
+              system={device}
+              status={getSystemStatus(device.id)}
+              onClick={() => handleSystemClick(device.id)}
+            />
           ))}
         </div>
       </div>
 
-      {/* Floor Layout - Responsive */}
-      <div className="bg-gray-900 rounded-xl p-3 sm:p-4 md:p-6 border border-gray-700 shadow-inner relative overflow-hidden">
-        <h3 className="text-center mb-4 md:mb-8 font-bold text-lg md:text-xl text-purple-400 relative">
-          Floor {currentFloor} Layout
-        </h3>
-
-        {/* Open Office Desks Section */}
-        <div className="mb-6 md:mb-10 bg-gray-800 rounded-xl border border-gray-700 p-3 sm:p-4 md:p-6 shadow-md relative z-10">
-          <div className="flex items-center mb-4 md:mb-6">
-            <div className="bg-gray-900 text-purple-400 p-1 md:p-2 rounded-lg border border-gray-700">
-              <Monitor size={20} />
-            </div>
-            <h4 className="text-purple-400 font-bold text-base md:text-lg ml-2 md:ml-3">Open Office Desks</h4>
-            <div className="h-px bg-gray-700 flex-grow ml-2 md:ml-4"></div>
-          </div>
-          
-          {/* Office Desk Rows - Responsive Grid */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-y-6 sm:gap-y-8 md:gap-y-12 gap-x-2 sm:gap-x-3 md:gap-x-4 mb-4 md:mb-8">
-            {floorConfig[currentFloor].systems.slice(0, 5).map((system) => {
-              const status = getSystemStatus(system.id);
-              return (
-                <OfficeDesk 
-                  key={system.id}
-                  system={system} 
-                  status={status} 
-                  onClick={() => handleSystemClick(system.id)}
-                />
-              );
-            })}
-          </div>
-          
-          {/* Aisle Space */}
-          <div className="h-6 md:h-10 mb-4 md:mb-8 relative">
-            <div className="absolute inset-0 border-t border-b border-dashed border-gray-600 flex items-center justify-center">
-              <span className="bg-gray-900 px-2 md:px-4 text-xs text-gray-400">WALKING AISLE</span>
-            </div>
-          </div>
-          
-          {/* Second Row of Office Desks - Responsive Grid */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-y-6 sm:gap-y-8 md:gap-y-12 gap-x-2 sm:gap-x-3 md:gap-x-4">
-            {floorConfig[currentFloor].systems.slice(5, 10).map((system) => {
-              const status = getSystemStatus(system.id);
-              return (
-                <OfficeDesk 
-                  key={system.id}
-                  system={system} 
-                  status={status} 
-                  onClick={() => handleSystemClick(system.id)}
-                />
-              );
-            })}
-          </div>
+      {/* Status Legend */}
+      <div className="mt-4 flex justify-center gap-4">
+        <div className="flex items-center">
+          <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+          <span className="text-sm text-gray-300">Available</span>
         </div>
-
-        {/* Private Cabin Section */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-3 sm:p-4 md:p-6 shadow-md relative z-10">
-          <div className="flex items-center mb-4 md:mb-6">
-            <div className="bg-gray-900 text-purple-400 p-1 md:p-2 rounded-lg border border-gray-700">
-              <Cpu size={20} />
-            </div>
-            <h4 className="text-purple-400 font-bold text-base md:text-lg ml-2 md:ml-3">Cabins</h4>
-            <div className="h-px bg-gray-700 flex-grow ml-2 md:ml-4"></div>
-          </div>
-
-          {/* Cabins Layout - Responsive */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
-            {floorConfig[currentFloor].cabins.map(cabin => (
-              <div key={cabin.id} className="border border-gray-700 rounded-lg p-2 sm:p-3 md:p-4 bg-gray-900 shadow-lg">
-                <h5 className="text-purple-300 font-medium mb-2 md:mb-3 border-b border-gray-700 pb-1 md:pb-2">Cabin {cabin.id}</h5>
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
-                  {cabin.systems.map(system => {
-                    const status = getSystemStatus(system.id);
-                    return (
-                      <OfficeDesk 
-                        key={system.id}
-                        system={system} 
-                        status={status} 
-                        onClick={() => handleSystemClick(system.id)}
-                        isSmall={true}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="flex items-center">
+          <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+          <span className="text-sm text-gray-300">In Progress</span>
         </div>
-
-        {/* Status Legend */}
-        <div className="mt-4 md:mt-8 flex flex-wrap justify-center gap-2 md:gap-4">
-          <div className="flex items-center">
-            <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-green-500 mr-1 md:mr-2"></div>
-            <span className="text-xs md:text-sm text-gray-300">Available</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-yellow-500 mr-1 md:mr-2"></div>
-            <span className="text-xs md:text-sm text-gray-300">In Progress</span>
-          </div>
-          <div className="flex items-center">
-            <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-red-500 mr-1 md:mr-2"></div>
-            <span className="text-xs md:text-sm text-gray-300">Issue Reported</span>
-          </div>
+        <div className="flex items-center">
+          <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+          <span className="text-sm text-gray-300">Issue Reported</span>
         </div>
       </div>
     </div>
   );
 }
 
-// OfficeDesk Component - Updated for responsiveness
-function OfficeDesk({ system, status, onClick, isSmall = false }) {
-  // Determine status color
+// OfficeDesk Component - Keeping the same styling as before
+function OfficeDesk({ system, status, onClick }) {
   const getStatusColor = (status) => {
     switch (status) {
       case 'open': return 'bg-red-500';
@@ -563,28 +746,26 @@ function OfficeDesk({ system, status, onClick, isSmall = false }) {
     }
   };
 
-  const sizes = isSmall 
-    ? "scale-75 md:scale-90"
-    : "";
-
   return (
     <div 
       onClick={onClick}
-      className={`relative ${sizes} ${status !== 'available' ? 'cursor-pointer transform hover:scale-105 transition-transform' : ''}`}
+      className={`relative ${status !== 'available' ? 'cursor-pointer transform hover:scale-105 transition-transform' : ''}`}
     >
-      {/* Desk */}
-      <div className={`bg-gray-700 rounded-lg border border-gray-600 shadow-md p-2 flex flex-col items-center justify-center ${status !== 'available' ? 'ring-2 ring-offset-1 ring-offset-gray-800 ' + getStatusColor(status) : ''}`}>
-        <div className="bg-gray-800 p-1 md:p-2 rounded-md mb-1 md:mb-2">
-          <Laptop size={isSmall ? 14 : 18} className="text-purple-400" />
+      <div className={`bg-gray-700 rounded-lg border border-gray-600 shadow-md p-2 flex flex-col items-center justify-center min-h-[80px] ${
+        status !== 'available' ? 'ring-2 ring-offset-1 ring-offset-gray-800 ' + getStatusColor(status) : ''
+      }`}>
+        <div className="bg-gray-800 p-2 rounded-md mb-2">
+          <Laptop size={18} className="text-purple-400" />
         </div>
-        <span className={`font-mono text-xs ${status !== 'available' ? 'text-black font-medium' : 'text-gray-400'}`}>
+        <span className={`font-mono text-xs ${
+          status !== 'available' ? 'text-black font-medium' : 'text-gray-400'
+        }`}>
           {system.id}
         </span>
       </div>
       
-      {/* Status indicator */}
       {status !== 'available' && (
-        <div className={`absolute -top-1 -right-1 w-3 h-3 md:w-4 md:h-4 rounded-full ${getStatusColor(status)} border-2 border-gray-800 shadow-lg`}></div>
+        <div className={`absolute -top-1 -right-1 w-4 h-4 rounded-full ${getStatusColor(status)} border-2 border-gray-800 shadow-lg`}></div>
       )}
     </div>
   );
@@ -1119,12 +1300,22 @@ function TicketTrendsChart({ data }) {
         <XAxis dataKey="date" stroke="#9CA3AF" />
         <YAxis stroke="#9CA3AF" />
         <Tooltip 
-          contentStyle={{ backgroundColor: '#1F2937', borderColor: '#4B5563', color: '#F9FAFB' }}
-          itemStyle={{ color: '#F9FAFB' }}
-          labelStyle={{ color: '#F9FAFB' }}
+          contentStyle={{ backgroundColor: '#1F2937', borderColor: '#4B5563', color: '#FFFFFF' }}
+          itemStyle={{ color: '#FFFFFF' }}
+          labelStyle={{ color: '#FFFFFF' }}
         />
         <Legend
-          wrapperStyle={{ color: '#F9FAFB' }}
+          wrapperStyle={{
+            color: '#FFFFFF',
+            fontSize: '1.1rem',
+            padding: '8px 0',
+            textAlign: 'center',
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'center',
+            flexWrap: 'wrap'
+          }}
+          iconSize={22}
         />
       </LineChart>
     </div>
@@ -1138,7 +1329,38 @@ function PriorityDistribution({ high, medium, low }) {
     { name: 'Medium', value: medium, color: '#F59E0B' },
     { name: 'Low', value: low, color: '#10B981' }
   ];
-  
+
+  // Custom legend renderer for bigger colored boxes and white text
+  const renderCustomLegend = (props) => {
+    const { payload } = props;
+    return (
+      <div
+        className="flex flex-wrap justify-center gap-4 mt-2 "
+        style={{ width: '100%' }}
+      >
+        {payload.map((entry, index) => (
+          <div key={index} className="flex items-center mx-2 my-1">
+            <span
+              style={{
+                display: 'inline-block',
+                width: 28,
+                height: 18,
+                borderRadius: 4,
+                background: entry.color,
+                marginRight: 10,
+                border: '2px solid #fff',
+                boxSizing: 'border-box'
+              }}
+            />
+            <span style={{ color: '#ffff', fontSize: '1.1rem', fontWeight: 600 }}>
+              {entry.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="w-full h-full flex items-center justify-center">
       <PieChart width={300} height={250}>
@@ -1157,13 +1379,13 @@ function PriorityDistribution({ high, medium, low }) {
             <Cell key={`cell-${index}`} fill={entry.color} />
           ))}
         </Pie>
-        <Tooltip 
-          contentStyle={{ backgroundColor: '#1F2937', borderColor: '#4B5563', color: '#F9FAFB' }}
-          itemStyle={{ color: '#F9FAFB' }}
-          labelStyle={{ color: '#F9FAFB' }}
+        <Tooltip
+          contentStyle={{ backgroundColor: '#1F2937', borderColor: '#4B5563', color: '#FFFF' }}
+          itemStyle={{ color: '#FFF' }}
+          labelStyle={{ color: '#FFF' }}
         />
-        <Legend 
-          wrapperStyle={{ color: '#F9FAFB' }}
+        <Legend
+          content={renderCustomLegend}
         />
       </PieChart>
     </div>
