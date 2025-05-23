@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { getFirestore, collection, getDocs, query, orderBy, doc, updateDoc } from "firebase/firestore";
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, setDoc, query, where, orderBy } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
-import { Clock, Users, AlertTriangle, Check, Map, BarChart, Monitor, Cpu, Laptop, Award, Phone, Menu, X } from 'lucide-react';
+import { Clock, Users, AlertTriangle, Check, Map, BarChart, Monitor, Cpu, Laptop, Award, Phone, Menu, X, Plus } from 'lucide-react';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 
 // Your Firebase configuration object
@@ -268,6 +268,12 @@ export default function AdminDashboard({ user, onLogout }) {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [layoutConfig, setLayoutConfig] = useState(defaultLayoutConfig);
+  const [floors, setFloors] = useState(['S1']);
+  const [showCreateFloor, setShowCreateFloor] = useState(false);
+  const [newFloorConfig, setNewFloorConfig] = useState({
+    floorName: '',
+    ...defaultLayoutConfig
+  });
   const officeLayout = useOfficeLayout(layoutConfig);
 
   // Fetch all tickets for admin
@@ -364,6 +370,214 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  // Add this component inside AdminDashboard component
+  const CreateFloorModal = () => {
+    if (!showCreateFloor) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700">
+          <h2 className="text-xl font-bold text-white mb-4">Create New Floor</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Floor Name</label>
+              <input
+                type="text"
+                value={newFloorConfig.floorName}
+                onChange={(e) => setNewFloorConfig({...newFloorConfig, floorName: e.target.value})}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                placeholder="e.g., F1, S2, etc."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Workstations</label>
+                <input
+                  type="number"
+                  value={newFloorConfig.totalWorkstations}
+                  onChange={(e) => setNewFloorConfig({...newFloorConfig, totalWorkstations: parseInt(e.target.value)})}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Meeting Rooms</label>
+                <input
+                  type="number"
+                  value={newFloorConfig.totalMeetingRooms}
+                  onChange={(e) => setNewFloorConfig({...newFloorConfig, totalMeetingRooms: parseInt(e.target.value)})}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Cabins</label>
+                <input
+                  type="text"
+              value={newFloorConfig.floorName}
+              onChange={(e) => setNewFloorConfig({...newFloorConfig, floorName: e.target.value})}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+              placeholder="e.g., F1, S2, etc."
+              required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Conference Rooms</label>
+                <input
+                  type="number"
+                  value={newFloorConfig.totalConferenceRooms}
+                  onChange={(e) => setNewFloorConfig({...newFloorConfig, totalConferenceRooms: parseInt(e.target.value)})}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              onClick={() => setShowCreateFloor(false)}
+              className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreateFloor}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
+              Create Floor
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Add this function to handle floor creation
+  const handleCreateFloor = async () => {
+    if (!newFloorConfig.floorName) {
+      alert("Please enter a floor name");
+      return;
+    }
+    
+    try {
+      const floorRef = doc(db, "floors", newFloorConfig.floorName);
+      await setDoc(floorRef, {
+        ...newFloorConfig,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      setFloors(prev => [...prev, newFloorConfig.floorName]);
+      setCurrentFloor(newFloorConfig.floorName);
+      setLayoutConfig(prev => ({
+        ...prev,
+        [newFloorConfig.floorName]: newFloorConfig
+      }));
+
+      setShowCreateFloor(false);
+      setNewFloorConfig({
+        floorName: '',
+        ...defaultLayoutConfig
+      });
+
+      // Refresh the floor list
+      fetchFloors();
+    } catch (error) {
+      console.error("Error creating floor:", error);
+      alert("Error creating floor. Please try again.");
+    }
+  };
+
+  const saveFloorConfig = async (floorName, config) => {
+    try {
+      const floorRef = doc(db, "floors", floorName);
+      await updateDoc(floorRef, {
+        ...config,
+        updatedAt: new Date()
+      });
+    } catch (error) {
+      console.error("Error saving floor config:", error);
+    }
+  };
+
+  const fetchFloors = async () => {
+    try {
+      const floorsCollection = collection(db, "floors");
+      const floorsSnapshot = await getDocs(floorsCollection);
+      const floorsData = {};
+      const floorNames = ['S1'];
+
+      floorsSnapshot.forEach(doc => {
+        floorsData[doc.id] = doc.data();
+        if (!floorNames.includes(doc.id)) {
+          floorNames.push(doc.id);
+        }
+      });
+
+      setFloors(floorNames);
+      setLayoutConfig(prevConfig => ({
+        ...prevConfig,
+        ...floorsData
+      }));
+    } catch (error) {
+      console.error("Error fetching floors:", error);
+    }
+  };
+
+  // Add this useEffect after your existing useEffects
+  useEffect(() => {
+    fetchFloors();
+  }, []);
+
+  // Modify the FloorView section in the return statement
+  // Find this part in your existing code:
+  {activeTab === 'map' && (
+    <FloorView
+      tickets={tickets}
+      officeLayout={officeLayout}
+      setSelectedTicket={handleTicketSelect}
+      layoutConfig={layoutConfig}
+      setLayoutConfig={setLayoutConfig}
+    />
+  )}
+
+  // Replace it with:
+  {activeTab === 'map' && (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <select
+            value={currentFloor}
+            onChange={(e) => setCurrentFloor(e.target.value)}
+            className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+          >
+            {floors.map(floor => (
+              <option key={floor} value={floor}>{floor}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowCreateFloor(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            <Plus size={16} />
+            <span>Create Floor</span>
+          </button>
+        </div>
+      </div>
+      <FloorView
+        tickets={tickets}
+        officeLayout={officeLayout}
+        setSelectedTicket={handleTicketSelect}
+        layoutConfig={layoutConfig}
+        setLayoutConfig={setLayoutConfig}
+        currentFloor={currentFloor}
+      />
+      {showCreateFloor && <CreateFloorModal />}
+    </div>
+  )}
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-900">
@@ -437,13 +651,37 @@ export default function AdminDashboard({ user, onLogout }) {
           />
           <main className="flex-1 p-2 sm:p-4 md:p-6 overflow-auto">
             {activeTab === 'map' && (
-              <FloorView
-                tickets={tickets}
-                officeLayout={officeLayout}
-                setSelectedTicket={handleTicketSelect}
-                layoutConfig={layoutConfig}
-                setLayoutConfig={setLayoutConfig}
-              />
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <select
+                      value={currentFloor}
+                      onChange={(e) => setCurrentFloor(e.target.value)}
+                      className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    >
+                      {floors.map(floor => (
+                        <option key={floor} value={floor}>{floor}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setShowCreateFloor(true)}
+                      className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                      <Plus size={16} />
+                      <span>Create Floor</span>
+                    </button>
+                  </div>
+                </div>
+                <FloorView
+                  tickets={tickets}
+                  officeLayout={officeLayout}
+                  setSelectedTicket={handleTicketSelect}
+                  layoutConfig={layoutConfig}
+                  setLayoutConfig={setLayoutConfig}
+                  currentFloor={currentFloor}
+                />
+                {showCreateFloor && <CreateFloorModal />}
+              </div>
             )}
             {activeTab === 'tickets' && (
               <TicketList
@@ -568,7 +806,7 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
 }
 
 // FloorView Component - Updated with proper prop handling
-function FloorView({ tickets, officeLayout, setSelectedTicket, layoutConfig, setLayoutConfig }) {
+function FloorView({ tickets, officeLayout, setSelectedTicket, layoutConfig, setLayoutConfig, currentFloor }) {
   const [activeView, setActiveView] = useState('all');
   
   // Add these two functions
