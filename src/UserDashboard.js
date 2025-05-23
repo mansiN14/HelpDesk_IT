@@ -4,6 +4,8 @@ import { Bell, User, Search, Plus, Info, Clock, CheckCircle, LogOut } from "luci
 import { LayoutDashboard, Ticket, BookOpen, BarChart2 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import Chatbot from './chatbot';
+import { useMemo } from "react";
+
 import { 
   getAuth, 
   createUserWithEmailAndPassword, 
@@ -72,6 +74,47 @@ const floorConfig = {
   S3: { systems: [], cabins: [] },
   S4: { systems: [], cabins: [] }
 };
+
+const defaultLayoutConfig = {
+  totalWorkstations: 415,
+  totalMeetingRooms: 11,
+  totalMDCabins: 4,
+  totalTechnicalWS: 26,
+  totalConferenceRooms: 2,
+  totalTeamLeadTables: 1,
+  gridWidth: 30,
+  gridHeight: 20,
+  clusterSize: 6,
+  aisleWidth: 2,
+};
+
+const spaceTypes = {
+  WORKSTATION: { prefix: 'WS', color: '#e3f2fd', borderColor: '#1976d2' },
+  MEETING_ROOM: { prefix: 'MR', color: '#f3e5f5', borderColor: '#7b1fa2' },
+  MD_CABIN: { prefix: 'MD', color: '#fff3e0', borderColor: '#f57c00' },
+  TECHNICAL_WS: { prefix: 'TWS', color: '#e8f5e8', borderColor: '#388e3c' },
+  CONFERENCE: { prefix: 'CO', color: '#ffebee', borderColor: '#d32f2f' },
+  TEAM_LEAD: { prefix: 'TL', color: '#f1f8e9', borderColor: '#689f38' },
+  CORRIDOR: { prefix: 'CORRIDOR', color: '#f5f5f5', borderColor: '#bdbdbd' },
+  AMENITY: { prefix: 'AMENITY', color: '#fafafa', borderColor: '#9e9e9e' },
+  EMPTY: { prefix: 'EMPTY', color: 'transparent', borderColor: 'transparent' }
+};
+
+
+function useOfficeLayout(config) {
+  return useMemo(() => {
+    if (!config || !config.gridHeight || !config.gridWidth) {
+      // Return an empty grid if config is missing
+      return [[]];
+    }
+    // ...your full grid generation logic here...
+    const grid = Array(config.gridHeight).fill(null).map(() =>
+      Array(config.gridWidth).fill(null).map(() => ({ type: 'EMPTY', id: null }))
+    );
+    // ...rest of your logic...
+    return grid;
+  }, [config]);
+}
 
 export default function ITHelpDesk() {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -1060,22 +1103,21 @@ export default function ITHelpDesk() {
                 <label className="block text-sm font-medium mb-1" htmlFor="deviceId">
                   {language === "English" ? "Device/System ID" : "उपकरण/प्रणाली आयडी"}
                 </label>
-                <select
+                <input
+                  list="device-options"
                   id="deviceId"
                   name="deviceId"
                   className="w-full border rounded-md p-2"
                   value={newTicket.deviceId}
                   onChange={handleInputChange}
-                >
-                  <option value="">
-                    {language === "English" ? "Select a device (optional)" : "उपकरण निवडा (ऐच्छिक)"}
-                  </option>
-                  {devices.map(device => (
-                    <option key={device.id} value={device.id}>
-                      {device.name}
-                    </option>
+                  placeholder={language === "English" ? "Select or enter device/system ID" : "उपकरण/प्रणाली आयडी निवडा किंवा टाका"}
+                  autoComplete="off"
+                />
+                <datalist id="device-options">
+                  {uniqueDevices.map(id => (
+                    <option key={id} value={id} />
                   ))}
-                </select>
+                </datalist>
               </div>
               
               <div className="md:col-span-2">
@@ -1370,25 +1412,22 @@ export default function ITHelpDesk() {
     );
   };
 
-  // Render the appropriate content based on the active tab
-  const renderContent = () => {
-    switch (activeTab) {
-      case "dashboard":
-        return renderDashboard();
-      case "tickets":
-        return renderTicketsList();
-      case "createTicket":
-        return renderCreateTicketForm();
-      case "analytics":
-        return renderAnalytics();
-      case "help":
-        return renderHelp();
-      default:
-        return renderDashboard();
-    }
-  };
+  // Always call hooks at the top level!
+  const layoutConfig = defaultLayoutConfig;
+  const officeLayout = useOfficeLayout(layoutConfig);
 
-  // Add error handling for layout components
+  // Extract device/system IDs from the layout grid
+  const deviceTypes = [
+    "WORKSTATION", "MEETING_ROOM", "MD_CABIN", "TECHNICAL_WS", "CONFERENCE", "TEAM_LEAD"
+  ];
+  const allDevicesFromLayout = Array.isArray(officeLayout)
+    ? officeLayout.flat().filter(cell => deviceTypes.includes(cell.type) && cell.id).map(cell => cell.id)
+    : [];
+
+  const uniqueDevices = Array.from(new Set(allDevicesFromLayout));
+
+  // Now you can use uniqueDevices in your renderCreateTicketForm
+
   if (!isInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1504,7 +1543,11 @@ export default function ITHelpDesk() {
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-auto">
-          {renderContent()}
+          {activeTab === "dashboard" && renderDashboard()}
+          {activeTab === "tickets" && renderTicketsList()}
+          {activeTab === "createTicket" && renderCreateTicketForm()}
+          {activeTab === "analytics" && renderAnalytics()}
+          {activeTab === "help" && renderHelp()}
         </main>
       </div>
     </div>
