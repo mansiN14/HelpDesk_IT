@@ -263,7 +263,7 @@ function useOfficeLayout(config) {
 export default function AdminDashboard({ user, onLogout }) {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentFloor, setCurrentFloor] = useState('S1');
+  const [currentFloor, setCurrentFloor] = useState('S1'); // Keep this one
   const [activeTab, setActiveTab] = useState('map');
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -278,26 +278,30 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // Fetch all tickets for admin
   useEffect(() => {
-    const fetchTickets = async () => {
-      setLoading(true);
-      try {
-        const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
-        const querySnapshot = await getDocs(q);
-        const ticketsData = querySnapshot.docs.map(doc => ({
+  const fetchTickets = async () => {
+    setLoading(true);
+    try {
+      const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
+      const querySnapshot = await getDocs(q);
+      const ticketsData = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        const createdAt = data.createdAt ? data.createdAt.toDate().toLocaleString() : new Date().toLocaleString();
+        return {
           id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate().toLocaleString() || new Date().toLocaleString()
-        }));
-        setTickets(ticketsData);
-      } catch (err) {
-        console.error("Error fetching tickets:", err);
-        setTickets([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTickets();
-  }, []);
+          ...data,
+          createdAt: createdAt
+        };
+      });
+      setTickets(ticketsData);
+    } catch (err) {
+      console.error("Error fetching tickets:", err);
+      setTickets([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchTickets();
+}, []);
 
   // Add this to AdminDashboard component
   const refreshTickets = async () => {
@@ -371,65 +375,77 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   // Add this component inside AdminDashboard component
-  const CreateFloorModal = () => {
-    if (!showCreateFloor) return null;
+const handleInputChange = (e) => {
+  const { name, value } = e.target;
+  setNewFloorConfig(prevConfig => ({
+    ...prevConfig,
+    [name]: name === 'floorName' ? value : parseInt(value) || 0,
+  }));
+};
+
+
+const CreateFloorModal = () => {
+  if (!showCreateFloor) return null;
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-        <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700">
-          <h2 className="text-xl font-bold text-white mb-4">Create New Floor</h2>
-          
-          <div className="space-y-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700">
+        <h2 className="text-xl font-bold text-white mb-4">Create New Floor</h2>
+        
+        <div className="space-y-4">
+             <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Floor Name</label>
+            <input
+              type="text"
+              name="floorName"
+              value={newFloorConfig.floorName}
+              onChange={handleInputChange}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+              placeholder="e.g., F1, S2, Ground Floor, etc."
+            />
+          </div>
+
+            <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Floor Name</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Workstations</label>
               <input
-                type="text"
-                value={newFloorConfig.floorName}
-                onChange={(e) => setNewFloorConfig({...newFloorConfig, floorName: e.target.value})}
+                type="number"
+                name="totalWorkstations"
+                value={newFloorConfig.totalWorkstations}
+                onChange={handleInputChange}
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-                placeholder="e.g., F1, S2, etc."
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Workstations</label>
-                <input
-                  type="number"
-                  value={newFloorConfig.totalWorkstations}
-                  onChange={(e) => setNewFloorConfig({...newFloorConfig, totalWorkstations: parseInt(e.target.value)})}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-                />
-              </div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Meeting Rooms</label>
+              <input
+                type="number"
+                name="totalMeetingRooms"
+                value={newFloorConfig.totalMeetingRooms}
+                onChange={handleInputChange}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+              />
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Meeting Rooms</label>
-                <input
-                  type="number"
-                  value={newFloorConfig.totalMeetingRooms}
-                  onChange={(e) => setNewFloorConfig({...newFloorConfig, totalMeetingRooms: parseInt(e.target.value)})}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Cabins</label>
-                <input
-                  type="text"
-              value={newFloorConfig.floorName}
-              onChange={(e) => setNewFloorConfig({...newFloorConfig, floorName: e.target.value})}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-              placeholder="e.g., F1, S2, etc."
-              required
-                />
-              </div>
+               <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Cabins</label>
+              <input
+                type="number"
+                name="totalMDCabins"
+                value={newFloorConfig.totalMDCabins}
+                onChange={handleInputChange}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+              />
+            </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Conference Rooms</label>
                 <input
                   type="number"
+                  name="totalConferenceRooms"
                   value={newFloorConfig.totalConferenceRooms}
-                  onChange={(e) => setNewFloorConfig({...newFloorConfig, totalConferenceRooms: parseInt(e.target.value)})}
+                  onChange={handleInputChange}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
                 />
               </div>
@@ -457,44 +473,41 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // Add this function to handle floor creation
   const handleCreateFloor = async () => {
-    if (!newFloorConfig.floorName) {
-      alert("Please enter a floor name");
-      return;
-    }
-    
-    try {
-      const floorRef = doc(db, "floors", newFloorConfig.floorName);
-      await setDoc(floorRef, {
-        ...newFloorConfig,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
+  console.log("handleCreateFloor called"); // Debug log
+  if (!newFloorConfig.floorName) {
+    console.log("Floor name is missing"); // Debug log
+    return;
+  }
 
-      setFloors(prev => [...prev, newFloorConfig.floorName]);
-      setCurrentFloor(newFloorConfig.floorName);
-      setLayoutConfig(prev => ({
-        ...prev,
-        [newFloorConfig.floorName]: newFloorConfig
-      }));
+  try {
+    const floorRef = doc(db, "floors", newFloorConfig.floorName);
+    await setDoc(floorRef, {
+      ...newFloorConfig,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
 
-      setShowCreateFloor(false);
-      setNewFloorConfig({
-        floorName: '',
-        ...defaultLayoutConfig
-      });
+    setFloors(prev => [...prev, newFloorConfig.floorName]);
+    setCurrentFloor(newFloorConfig.floorName);
+    setLayoutConfig(prev => ({
+      ...prev,
+      [newFloorConfig.floorName]: newFloorConfig
+    }));
 
-      // Refresh the floor list
-      fetchFloors();
-    } catch (error) {
-      console.error("Error creating floor:", error);
-      alert("Error creating floor. Please try again.");
-    }
-  };
+    setShowCreateFloor(false);
+    setNewFloorConfig({
+      floorName: '',
+      ...defaultLayoutConfig
+    });
+  } catch (error) {
+    console.error("Error creating floor:", error);
+  }
+};
 
   const saveFloorConfig = async (floorName, config) => {
     try {
       const floorRef = doc(db, "floors", floorName);
-      await updateDoc(floorRef, {
+      await setDoc(floorRef, {
         ...config,
         updatedAt: new Date()
       });
@@ -1618,7 +1631,8 @@ function PriorityDistribution({ high, medium, low }) {
           ))}
         </Pie>
         <Tooltip
-          contentStyle={{ backgroundColor: '#1F2937', borderColor: '#4B5563', color: '#FFFF' }}
+          contentStyle={{ backgroundColor: '#1F2937', borderColor: '#4B5563', color: '#FFFFFF' }}
+
           itemStyle={{ color: '#FFF' }}
           labelStyle={{ color: '#FFF' }}
         />
