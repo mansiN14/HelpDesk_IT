@@ -55,6 +55,12 @@ const defaultLayoutConfig = {
   gridHeight: 20,
   clusterSize: 6,
   aisleWidth: 2,
+  workstationRows: 10,
+  cabinRows: 2,
+  technicalWSRows: 3,
+  conferenceRows: 1,
+  meetingRows: 2,
+  tlRows: 1,
 };
 
 const spaceTypes = {
@@ -259,6 +265,46 @@ function useOfficeLayout(config) {
   }, [config]);
 }
 
+// OfficeDesk Component - Vertical Rectangular with Transparent Blue, Glowing Border, and Centered ID
+const OfficeDesk = ({ system, status, onClick }) => {
+  const baseClasses = "relative flex flex-col items-center justify-center rounded-md border-2 cursor-pointer transition-all duration-200 overflow-hidden";
+  // Decrease size of seats further
+  const sizeClasses = "w-10 h-14 md:w-16 md:h-24"; // Further adjusted size
+
+  // Transparent blue background and blue glowing border
+  const appearanceClasses = "bg-blue-500/20 border-blue-500 shadow-lg shadow-blue-500/40";
+
+  const statusColor = status === 'open' ? 'bg-red-500' : status === 'in-progress' ? 'bg-yellow-500' : 'bg-green-500';
+  const statusText = status?.charAt(0).toUpperCase() + status?.slice(1).toLowerCase();
+
+  return (
+    <div
+      className={`${baseClasses} ${sizeClasses} ${appearanceClasses} ${status === 'available' ? 'hover:scale-105' : ''}`}
+      onClick={onClick}
+    >
+      {/* System ID - Centered */}
+      <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-mono text-center px-0.5 leading-tight">
+        {system?.id || 'N/A'}
+      </div>
+
+      {/* Status Indicator / Priority - Bottom */}
+      {status !== 'available' && (
+        <div className="absolute bottom-0 left-0 right-0 text-white text-[6px] sm:text-[8px] font-bold text-center py-0.5 leading-tight bg-gray-700/80">
+          <span className={`px-1 py-0.5 rounded-sm ${statusColor}`}>
+            {statusText || 'Low'}
+          </span>
+        </div>
+      )}
+
+      {/* Overlay for hover effect - Keep the blue overlay */}
+      {status === 'available' && (
+         <div className="absolute inset-0 bg-blue-500 opacity-0 hover:opacity-20 transition-opacity">
+         </div>
+      )}
+    </div>
+  );
+};
+
 // Main Admin App Component
 export default function AdminDashboard({ user, onLogout }) {
   const [tickets, setTickets] = useState([]);
@@ -278,30 +324,30 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // Fetch all tickets for admin
   useEffect(() => {
-  const fetchTickets = async () => {
-    setLoading(true);
-    try {
-      const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
-      const querySnapshot = await getDocs(q);
-      const ticketsData = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        const createdAt = data.createdAt ? data.createdAt.toDate().toLocaleString() : new Date().toLocaleString();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: createdAt
-        };
-      });
-      setTickets(ticketsData);
-    } catch (err) {
-      console.error("Error fetching tickets:", err);
-      setTickets([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchTickets();
-}, []);
+    const fetchTickets = async () => {
+      setLoading(true);
+      try {
+        const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(q);
+        const ticketsData = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          const createdAt = data.createdAt ? data.createdAt.toDate().toLocaleString() : new Date().toLocaleString();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: createdAt
+          };
+        });
+        setTickets(ticketsData);
+      } catch (err) {
+        console.error("Error fetching tickets:", err);
+        setTickets([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTickets();
+  }, []);
 
   // Add this to AdminDashboard component
   const refreshTickets = async () => {
@@ -341,7 +387,7 @@ export default function AdminDashboard({ user, onLogout }) {
       setTickets(tickets.map(ticket =>
         ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket
       ));
-      
+
       if (selectedTicket && selectedTicket.id === ticketId) {
         setSelectedTicket({ ...selectedTicket, status: newStatus });
       }
@@ -375,69 +421,69 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   // Add this component inside AdminDashboard component
-const handleInputChange = (e) => {
-  const { name, value } = e.target;
-  setNewFloorConfig(prevConfig => ({
-    ...prevConfig,
-    [name]: name === 'floorName' ? value : parseInt(value) || 0,
-  }));
-};
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewFloorConfig(prevConfig => ({
+      ...prevConfig,
+      [name]: name === 'floorName' ? value : parseInt(value) || 0,
+    }));
+  };
 
 
-const CreateFloorModal = () => {
-  if (!showCreateFloor) return null;
+  const CreateFloorModal = () => {
+    if (!showCreateFloor) return null;
 
     return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700">
-        <h2 className="text-xl font-bold text-white mb-4">Create New Floor</h2>
-        
-        <div className="space-y-4">
-             <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Floor Name</label>
-            <input
-              type="text"
-              name="floorName"
-              value={newFloorConfig.floorName}
-              onChange={handleInputChange}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-              placeholder="e.g., F1, S2, Ground Floor, etc."
-            />
-          </div>
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-gray-700">
+          <h2 className="text-xl font-bold text-white mb-4">Create New Floor</h2>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Floor Name</label>
+              <input
+                type="text"
+                name="floorName"
+                value={newFloorConfig.floorName}
+                onChange={handleInputChange}
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                placeholder="e.g., F1, S2, Ground Floor, etc."
+              />
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Workstations</label>
-              <input
-                type="number"
-                name="totalWorkstations"
-                value={newFloorConfig.totalWorkstations}
-                onChange={handleInputChange}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Workstations</label>
+                <input
+                  type="number"
+                  name="totalWorkstations"
+                  value={newFloorConfig.totalWorkstations}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                />
+              </div>
 
               <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Meeting Rooms</label>
-              <input
-                type="number"
-                name="totalMeetingRooms"
-                value={newFloorConfig.totalMeetingRooms}
-                onChange={handleInputChange}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-              />
-            </div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Meeting Rooms</label>
+                <input
+                  type="number"
+                  name="totalMeetingRooms"
+                  value={newFloorConfig.totalMeetingRooms}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                />
+              </div>
 
-               <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Cabins</label>
-              <input
-                type="number"
-                name="totalMDCabins"
-                value={newFloorConfig.totalMDCabins}
-                onChange={handleInputChange}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Cabins</label>
+                <input
+                  type="number"
+                  name="totalMDCabins"
+                  value={newFloorConfig.totalMDCabins}
+                  onChange={handleInputChange}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                />
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Conference Rooms</label>
@@ -473,36 +519,36 @@ const CreateFloorModal = () => {
 
   // Add this function to handle floor creation
   const handleCreateFloor = async () => {
-  console.log("handleCreateFloor called"); // Debug log
-  if (!newFloorConfig.floorName) {
-    console.log("Floor name is missing"); // Debug log
-    return;
-  }
+    console.log("handleCreateFloor called"); // Debug log
+    if (!newFloorConfig.floorName) {
+      console.log("Floor name is missing"); // Debug log
+      return;
+    }
 
-  try {
-    const floorRef = doc(db, "floors", newFloorConfig.floorName);
-    await setDoc(floorRef, {
-      ...newFloorConfig,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
+    try {
+      const floorRef = doc(db, "floors", newFloorConfig.floorName);
+      await setDoc(floorRef, {
+        ...newFloorConfig,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
 
-    setFloors(prev => [...prev, newFloorConfig.floorName]);
-    setCurrentFloor(newFloorConfig.floorName);
-    setLayoutConfig(prev => ({
-      ...prev,
-      [newFloorConfig.floorName]: newFloorConfig
-    }));
+      setFloors(prev => [...prev, newFloorConfig.floorName]);
+      setCurrentFloor(newFloorConfig.floorName);
+      setLayoutConfig(prev => ({
+        ...prev,
+        [newFloorConfig.floorName]: newFloorConfig
+      }));
 
-    setShowCreateFloor(false);
-    setNewFloorConfig({
-      floorName: '',
-      ...defaultLayoutConfig
-    });
-  } catch (error) {
-    console.error("Error creating floor:", error);
-  }
-};
+      setShowCreateFloor(false);
+      setNewFloorConfig({
+        floorName: '',
+        ...defaultLayoutConfig
+      });
+    } catch (error) {
+      console.error("Error creating floor:", error);
+    }
+  };
 
   const saveFloorConfig = async (floorName, config) => {
     try {
@@ -547,50 +593,54 @@ const CreateFloorModal = () => {
 
   // Modify the FloorView section in the return statement
   // Find this part in your existing code:
-  {activeTab === 'map' && (
-    <FloorView
-      tickets={tickets}
-      officeLayout={officeLayout}
-      setSelectedTicket={handleTicketSelect}
-      layoutConfig={layoutConfig}
-      setLayoutConfig={setLayoutConfig}
-    />
-  )}
-
-  // Replace it with:
-  {activeTab === 'map' && (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <select
-            value={currentFloor}
-            onChange={(e) => setCurrentFloor(e.target.value)}
-            className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-          >
-            {floors.map(floor => (
-              <option key={floor} value={floor}>{floor}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => setShowCreateFloor(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-          >
-            <Plus size={16} />
-            <span>Create Floor</span>
-          </button>
-        </div>
-      </div>
+  {
+    activeTab === 'map' && (
       <FloorView
         tickets={tickets}
         officeLayout={officeLayout}
         setSelectedTicket={handleTicketSelect}
         layoutConfig={layoutConfig}
         setLayoutConfig={setLayoutConfig}
-        currentFloor={currentFloor}
       />
-      {showCreateFloor && <CreateFloorModal />}
-    </div>
-  )}
+    )
+  }
+
+  // Replace it with:
+  {
+    activeTab === 'map' && (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <select
+              value={currentFloor}
+              onChange={(e) => setCurrentFloor(e.target.value)}
+              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+            >
+              {floors.map(floor => (
+                <option key={floor} value={floor}>{floor}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setShowCreateFloor(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
+              <Plus size={16} />
+              <span>Create Floor</span>
+            </button>
+          </div>
+        </div>
+        <FloorView
+          tickets={tickets}
+          officeLayout={officeLayout}
+          setSelectedTicket={handleTicketSelect}
+          layoutConfig={layoutConfig}
+          setLayoutConfig={setLayoutConfig}
+          currentFloor={currentFloor}
+        />
+        {showCreateFloor && <CreateFloorModal />}
+      </div>
+    )
+  }
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-900">
@@ -604,9 +654,9 @@ const CreateFloorModal = () => {
     <div className="relative min-h-screen bg-gray-900">
       {/* SVG Background */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-        <svg 
+        <svg
           className="absolute w-full h-full"
-          xmlns="http://www.w3.org/2000/svg" 
+          xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 800 600"
           preserveAspectRatio="xMidYMid slice"
         >
@@ -633,16 +683,16 @@ const CreateFloorModal = () => {
           <circle cx="50%" cy="80%" r="120" fill="#6366f1" opacity="0.1" filter="url(#glow)" />
 
           {/* Additional subtle patterns */}
-          <path 
-            d="M0,0 L100,0 L50,100 Z" 
-            fill="#6366f1" 
-            opacity="0.05" 
+          <path
+            d="M0,0 L100,0 L50,100 Z"
+            fill="#6366f1"
+            opacity="0.05"
             transform="translate(100,100) rotate(45)"
           />
-          <path 
-            d="M0,0 L100,0 L50,100 Z" 
-            fill="#8b5cf6" 
-            opacity="0.05" 
+          <path
+            d="M0,0 L100,0 L50,100 Z"
+            fill="#8b5cf6"
+            opacity="0.05"
             transform="translate(700,400) rotate(180)"
           />
         </svg>
@@ -650,15 +700,15 @@ const CreateFloorModal = () => {
 
       {/* Main content wrapper */}
       <div className="relative z-10 flex flex-col min-h-screen">
-        <Header 
-          user={user} 
-          onLogout={onLogout} 
-          toggleSidebar={() => setSidebarOpen(!sidebarOpen)} 
+        <Header
+          user={user}
+          onLogout={onLogout}
+          toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         />
         <div className="flex flex-1 relative">
-          <Sidebar 
-            activeTab={activeTab} 
-            setActiveTab={handleTabChange} 
+          <Sidebar
+            activeTab={activeTab}
+            setActiveTab={handleTabChange}
             isOpen={sidebarOpen}
             closeSidebar={() => setSidebarOpen(false)}
           />
@@ -724,7 +774,7 @@ function Header({ user, onLogout, toggleSidebar }) {
   return (
     <header className="bg-gradient-to-r from-gray-900 to-gray-800 text-gray-100 p-2 sm:p-4 shadow-lg border-b border-gray-700 flex justify-between items-center">
       <div className="flex items-center">
-        <button 
+        <button
           onClick={toggleSidebar}
           className="mr-2 p-1 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 md:hidden"
         >
@@ -783,11 +833,10 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
               <li key={tab.id}>
                 <button
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center w-full p-2 md:p-3 rounded-lg transition-all duration-200 ${
-                    activeTab === tab.id
+                  className={`flex items-center w-full p-2 md:p-3 rounded-lg transition-all duration-200 ${activeTab === tab.id
                       ? 'bg-purple-600 text-white shadow-md'
                       : 'hover:bg-gray-800 text-gray-300'
-                  }`}
+                    }`}
                 >
                   <span className={`mr-3 md:mr-4 ${activeTab === tab.id ? 'text-white' : 'text-purple-400'}`}>{tab.icon}</span>
                   <span className="font-medium">{tab.label}</span>
@@ -820,225 +869,179 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
 
 // FloorView Component - Updated with proper prop handling
 function FloorView({ tickets, officeLayout, setSelectedTicket, layoutConfig, setLayoutConfig, currentFloor }) {
-  const [activeView, setActiveView] = useState('all');
-  
-  // Add these two functions
-  const getSystemStatus = (systemId) => {
-    const ticket = tickets.find(t => t.deviceId === systemId && t.status !== 'resolved');
-    if (!ticket) return 'available';
-    return ticket.status;
+  const [selectedNumbers, setSelectedNumbers] = useState([]);
+  const [selectedSection, setSelectedSection] = useState('all');
+
+  // Section filters configuration
+  const sectionFilters = [
+      { type: 'WORKSTATION', label: 'Workstations', icon: <Laptop size={16} className="text-blue-400" /> },
+      { type: 'MD_CABIN', label: 'Cabins', icon: <Users size={16} className="text-orange-400" /> },
+      { type: 'TECHNICAL_WS', label: 'Tech Workstations', icon: <Cpu size={16} className="text-green-400" /> },
+      { type: 'CONFERENCE', label: 'Conference', icon: <Phone size={16} className="text-red-400" /> },
+      { type: 'MEETING_ROOM', label: 'Meeting Rooms', icon: <Clock size={16} className="text-purple-400" /> },
+      { type: 'TEAM_LEAD', label: 'Team Lead', icon: <Award size={16} className="text-yellow-400" /> }
+  ];
+
+  // Function to filter systems by section
+  const isSectionVisible = (system) => {
+    return selectedSection === 'all' || system.type === selectedSection;
   };
 
-  // Utility to remove duplicate devices by id
-  const dedupeDevices = (devices) => {
-    const seen = new Set();
-    return devices.filter(device => {
-      if (!device.id || seen.has(device.id)) return false;
-      seen.add(device.id);
-      return true;
-    });
-  };
-
-  // Add getAllDevices function
-  const getAllDevices = () => {
-    if (!officeLayout) return [];
-    
-    // Flatten and filter, then dedupe by id
-    const devices = officeLayout.flat().filter(cell =>
-      cell.type !== 'EMPTY' &&
-      cell.type !== 'CORRIDOR' &&
-      cell.type !== 'AMENITY'
+  // Add this helper function inside FloorView, before the return statement
+  // This function now organizes pairs into columns with a specific number of pairs per column
+  const organizeLayoutByImage = (systems, pairsPerColumn = 4) => {
+    const filteredSystems = systems.filter(system =>
+      system.id && system.type !== 'EMPTY' && system.type !== 'CORRIDOR' && isSectionVisible(system)
     );
-    return dedupeDevices(devices);
+
+    const pairs = [];
+    // Group filtered systems into horizontal pairs
+    for (let i = 0; i < filteredSystems.length; i += 2) {
+      pairs.push([filteredSystems[i], filteredSystems[i + 1] || null]); // Pair systems, handle odd number
+    }
+
+    // Distribute pairs into columns, with a fixed number of pairs per column
+    const columns = [];
+    let currentColumn = [];
+    pairs.forEach((pair, index) => {
+        currentColumn.push(pair);
+        if (currentColumn.length === pairsPerColumn || index === pairs.length - 1) {
+            columns.push(currentColumn);
+            currentColumn = [];
+        }
+    });
+
+    return columns; // Array of columns, each (except possibly the last) has pairsPerColumn pairs
   };
-  const handleSystemClick = (systemId) => {
-    const ticket = tickets.find(t => t.deviceId === systemId && t.status !== 'resolved');
+
+  // Generated connection pairs with sample device IDs
+  const connectionPairs = [
+    [
+      { left: 'WS-001', right: 'WS-002' }, { left: 'WS-003', right: 'WS-004' }, { left: 'WS-005', right: 'WS-006' },
+      { left: 'WS-007', right: 'WS-008' }, { left: 'WS-009', right: 'WS-010' }, { left: 'WS-011', right: 'WS-012' },
+      { left: 'WS-013', right: 'WS-014' }
+    ],
+    [
+      { left: 'WS-015', right: 'WS-016' }, { left: 'WS-017', right: 'WS-018' }, { left: 'WS-019', right: 'WS-020' },
+      { left: 'WS-021', right: 'WS-022' }, { left: 'WS-023', right: 'WS-024' }, { left: 'WS-025', right: 'WS-026' },
+      { left: 'WS-027', right: 'WS-028' }
+    ],
+    [
+      { left: 'TWS-01', right: 'TWS-02' }, { left: 'TWS-03', right: 'TWS-04' }, { left: 'TWS-05', right: 'TWS-06' },
+      { left: 'TWS-07', right: 'TWS-08' }, { left: 'TWS-09', right: 'TWS-10' }, { left: 'TWS-11', right: 'CB-01' },
+      { left: 'CB-02', right: 'CB-03' }
+    ],
+    [
+      { left: 'CB-04', right: 'CO-01' }, { left: 'CO-02', right: 'TL-01' }, { left: 'WS-029', right: 'WS-030' },
+      { left: 'WS-031', right: 'WS-032' }, { left: 'WS-033', right: 'WS-034' }, { left: 'WS-035', right: 'WS-036' },
+      { left: 'WS-037', right: 'WS-038' }
+    ]
+  ];
+
+  const handleNumberClick = (numberId, number) => {
+    setSelectedNumbers(prev =>
+      prev.includes(numberId)
+        ? prev.filter(id => id !== numberId)
+        : [...prev, numberId]
+    );
+  };
+
+  // Handle system click to select ticket
+  const handleSystemClick = (system) => {
+    const ticket = tickets.find(t => t.systemId === system.id);
     if (ticket) {
       setSelectedTicket(ticket);
     }
   };
 
-  const viewTabs = [
-    { id: 'all', label: 'All Devices', icon: <Monitor size={16} /> },
-    { id: 'workstations', label: 'Workstations', icon: <Laptop size={16} /> },
-    { id: 'meeting', label: 'Meeting Rooms', icon: <Users size={16} /> },
-    { id: 'cabins', label: 'Cabins', icon: <Award size={16} /> },
-    { id: 'technical', label: 'Technical', icon: <Cpu size={16} /> },
-    { id: 'conference', label: 'Conference', icon: <Users size={16} /> },
-    { id: 'teamlead', label: 'Team Lead', icon: <Award size={16} /> }
-  ];
+    return (
+    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 max-w-7xl">
+      <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-700 p-4 sm:p-8">
+        {/* Section Filters - Responsive */}
+        <div className="mb-4 sm:mb-8">
+          <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-4">
+            <button
+              onClick={() => setSelectedSection('all')}
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base ${selectedSection === 'all' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-700 hover:bg-gray-600'}`}
+            >
+              <Map size={16} className="text-blue-400" />
+              <span>All Sections</span>
+            </button>
+            {sectionFilters.map((filter) => (
+              <button
+                key={filter.type}
+                onClick={() => setSelectedSection(filter.type)}
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base ${selectedSection === filter.type ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-700 hover:bg-gray-600'}`}
+              >
+                {filter.icon}
+                <span>{filter.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
-  // In the FloorView component, update the getFilteredDevices function:
-  const getFilteredDevices = (devices, activeView) => {
-    if (!devices) return [];
+        {/* Floor Layout - Render Columns with Paired Systems */}
+        {/* Use Flexbox to arrange columns horizontally with wrapping */}
+        <div className="flex flex-wrap justify-center gap-x-6 sm:gap-x-10 md:gap-x-14 py-4"> {/* Reduced horizontal gaps */}
+          {organizeLayoutByImage(officeLayout.flat(), 4).map((column, colIndex) => (
+            // Container for each column, stacking pairs vertically
+            <div key={`column-${colIndex}`} className="flex flex-col items-center gap-y-4"> {/* Vertical gap between pairs within a column */}
+              {/* Map over the pairs within this column */}
+              {column.map((pair, pairIndex) => (
+                // Container for each horizontal pair
+                <div key={`pair-${colIndex}-${pairIndex}`} className="flex items-center justify-center gap-0.5 sm:gap-1"> {/* Reduced gap between systems in a pair */}
+                  {/* Render the first system in the pair */}
+                  {pair[0] && (
+                    <OfficeDesk
+                      key={`system-${colIndex}-${pairIndex}-0`}
+                      system={pair[0]}
+                      status={tickets.find(t => t.systemId === pair[0].id)?.status || 'available'}
+                      onClick={() => handleSystemClick(pair[0])}
+                    />
+                  )}
 
-    switch (activeView) {
-      case 'workstations':
-        return devices.filter(device =>
-          device.type === 'WORKSTATION' &&
-          device.id?.startsWith('WS') &&
-          !device.id?.startsWith('TWS') &&
-          !device.id?.startsWith('CO') // Extra safety: exclude conference
-        );
-      case 'meeting':
-        return devices.filter(device =>
-          device.type === 'MEETING_ROOM' &&
-          device.id?.startsWith('MR') &&
-          !device.id?.startsWith('CO')
-        );
-      case 'cabins':
-        return devices.filter(device =>
-          device.type === 'MD_CABIN' &&
-          device.id?.startsWith('CB') &&
-          !device.id?.startsWith('CO')
-        );
-      case 'technical':
-        return devices.filter(device =>
-          device.type === 'TECHNICAL_WS' &&
-          device.id?.startsWith('TWS') &&
-          !device.id?.startsWith('CO')
-        );
-      case 'conference':
-        return devices.filter(device =>
-          device.type === 'CONFERENCE' &&
-          device.id?.startsWith('CO')
-        );
-      case 'teamlead':
-        return devices.filter(device =>
-          device.type === 'TEAM_LEAD' &&
-          device.id?.startsWith('TL') &&
-          !device.id?.startsWith('CO')
-        );
-      case 'all':
-        return devices.filter(device => {
-          const id = device.id || '';
-          const type = device.type;
-          return (
-            (type === 'WORKSTATION' && id.startsWith('WS') && !id.startsWith('TWS') && !id.startsWith('CO')) ||
-            (type === 'MEETING_ROOM' && id.startsWith('MR') && !id.startsWith('CO')) ||
-            (type === 'MD_CABIN' && id.startsWith('CB') && !id.startsWith('CO')) ||
-            (type === 'TECHNICAL_WS' && id.startsWith('TWS') && !id.startsWith('CO')) ||
-            (type === 'CONFERENCE' && id.startsWith('CO')) ||
-            (type === 'TEAM_LEAD' && id.startsWith('TL') && !id.startsWith('CO'))
-          );
-        });
-      default:
-        return [];
-    }
-  };
+                  {/* Horizontal connection indicator between pair */}
+                  {pair.length === 2 && pair[1] && (
+                    <div className="flex items-center justify-center w-6"> {/* Adjust width as needed */}
+                      <span className="text-blue-400 font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl">H</span>
+                    </div>
+                  )}
 
-  return (
-    <div className="bg-gray-800 rounded-xl shadow-xl p-3 sm:p-4 md:p-6 border border-gray-700">
-      <div className="mb-4 md:mb-8">
-        <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6 text-gray-100 flex items-center">
-          <Map size={20} className="text-purple-400 mr-2 md:mr-3" />
-          Floor Map
-        </h2>
-      </div>
-
-      {/* View Selection Tabs */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        {viewTabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveView(tab.id)}
-            className={`flex items-center px-3 py-2 rounded-lg text-sm ${
-              activeView === tab.id
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            <span className="mr-2">{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Devices Grid */}
-      <div className="bg-gray-900 rounded-xl p-4 border border-gray-700">
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
-          {getFilteredDevices(getAllDevices(), activeView).map(device => (
-            <OfficeDesk
-              key={device.id}
-              system={device}
-              status={getSystemStatus(device.id)}
-              onClick={() => handleSystemClick(device.id)}
-            />
+                  {/* Render the second system in the pair if it exists */}
+                  {pair.length === 2 && pair[1] && (
+                    <OfficeDesk
+                      key={`system-${colIndex}-${pairIndex}-1`}
+                      system={pair[1]}
+                      status={tickets.find(t => t.systemId === pair[1].id)?.status || 'available'}
+                      onClick={() => handleSystemClick(pair[1])}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
           ))}
         </div>
       </div>
-
-      {/* Status Legend */}
-      <div className="mt-4 flex justify-center gap-4">
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
-          <span className="text-sm text-gray-300">Available</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
-          <span className="text-sm text-gray-300">In Progress</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
-          <span className="text-sm text-gray-300">Issue Reported</span>
-        </div>
-      </div>
     </div>
   );
 }
 
-// OfficeDesk Component - Keeping the same styling as before
-function OfficeDesk({ system, status, onClick }) {
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'open': return 'bg-red-500';
-      case 'in-progress': return 'bg-yellow-500';
-      default: return 'bg-red-500';
-    }
-  };
-
-  return (
-    <div 
-      onClick={onClick}
-      className={`relative ${status !== 'available' ? 'cursor-pointer transform hover:scale-105 transition-transform' : ''}`}
-    >
-      <div className={`bg-gray-700 rounded-lg border border-gray-600 shadow-md p-2 flex flex-col items-center justify-center min-h-[80px] ${
-        status !== 'available' ? 'ring-2 ring-offset-1 ring-offset-gray-800 ' + getStatusColor(status) : ''
-      }`}>
-        <div className="bg-gray-800 p-2 rounded-md mb-2">
-          <Laptop size={18} className="text-purple-400" />
-        </div>
-        <span className={`font-mono text-xs ${
-          status !== 'available' ? 'text-black font-medium' : 'text-gray-400'
-        }`}>
-          {system.id}
-        </span>
-      </div>
-      
-      {status !== 'available' && (
-        <div className={`absolute -top-1 -right-1 w-4 h-4 rounded-full ${getStatusColor(status)} border-2 border-gray-800 shadow-lg`}></div>
-      )}
-    </div>
-  );
-}
-
-// TicketList Component - Updated for responsiveness
+// Ticket List Component - Updated for responsiveness
 function TicketList({ tickets, setSelectedTicket }) {
   const [filter, setFilter] = useState('all');
-  
-  // Update the filter logic in TicketList component
-  const filteredTickets = filter === 'all' 
-    ? tickets 
+
+  const filteredTickets = filter === 'all'
+    ? tickets
     : tickets.filter(ticket => ticket.status?.toLowerCase() === filter.toLowerCase());
 
   // Priority badge component
-  const PriorityBadge = ({ priority }) => {
     const colors = {
       high: 'bg-red-500 text-white',
       medium: 'bg-yellow-500 text-black',
       low: 'bg-green-500 text-white'
     };
-    
+
+  const PriorityBadge = ({ priority }) => {
     return (
       <span className={`text-xs px-1 sm:px-2 py-0.5 sm:py-1 rounded ${colors[priority?.toLowerCase()] || colors.low} font-medium`}>
         {priority?.charAt(0).toUpperCase() + priority?.slice(1).toLowerCase() || 'Low'}
@@ -1053,36 +1056,36 @@ function TicketList({ tickets, setSelectedTicket }) {
           <AlertTriangle size={20} className="text-purple-400 mr-2 md:mr-3" />
           Support Tickets
         </h2>
-        
+
         {/* Filter buttons - Responsive */}
         <div className="flex flex-wrap bg-gray-900 p-1 rounded-lg border border-gray-700">
-          <button 
+          <button
             onClick={() => setFilter('all')}
             className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'all' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-300'}`}
           >
             All
           </button>
-          <button 
+          <button
             onClick={() => setFilter('open')}
-            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'open' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-300'}`}
+            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'open' ? 'bg-red-500 text-white' : 'text-gray-400 hover:text-gray-300'}`}
           >
             Open
           </button>
-          <button 
+          <button
             onClick={() => setFilter('in-progress')}
-            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'in-progress' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-300'}`}
+            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'in-progress' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-gray-300'}`}
           >
             In Progress
           </button>
-          <button 
+          <button
             onClick={() => setFilter('resolved')}
-            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'resolved' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-300'}`}
-            >
+            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'resolved' ? 'bg-green-500 text-white' : 'text-gray-400 hover:text-gray-300'}`}
+          >
             Resolved
           </button>
         </div>
       </div>
-      
+
       {/* Tickets list - Responsive with grid for large screens and list for small */}
       <div className="space-y-2 md:space-y-3">
         {filteredTickets.length === 0 ? (
@@ -1091,7 +1094,7 @@ function TicketList({ tickets, setSelectedTicket }) {
           </div>
         ) : (
           filteredTickets.map(ticket => (
-            <div 
+            <div
               key={ticket.id}
               onClick={() => setSelectedTicket(ticket)}
               className="bg-gray-900 rounded-lg p-2 sm:p-3 md:p-4 border border-gray-700 hover:bg-gray-850 cursor-pointer transform hover:translate-x-1 transition-all duration-200"
@@ -1108,19 +1111,18 @@ function TicketList({ tickets, setSelectedTicket }) {
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="col-span-3 sm:col-span-2 md:col-span-3">
                   <p className="text-xs sm:text-sm text-gray-300 line-clamp-1">{ticket.issue}</p>
                 </div>
-                
+
                 <div className="col-span-2 sm:col-span-1 flex items-center justify-end gap-2">
                   <PriorityBadge priority={ticket.priority} />
-                  <span className={`text-xs px-2 py-1 rounded font-medium ${
-                    ticket.status?.toLowerCase() === 'open' ? 'bg-red-500 text-white' :
-                    ticket.status?.toLowerCase() === 'in-progress' ? 'bg-yellow-500 text-black' :
-                    ticket.status?.toLowerCase() === 'resolved' ? 'bg-green-500 text-white' :
-                    'bg-gray-500 text-white'
-                  }`}>
+                  <span className={`text-xs px-2 py-1 rounded font-medium ${ticket.status?.toLowerCase() === 'open' ? 'bg-red-500 text-white' :
+                      ticket.status?.toLowerCase() === 'in-progress' ? 'bg-yellow-500 text-black' :
+                        ticket.status?.toLowerCase() === 'resolved' ? 'bg-green-500 text-white' :
+                          'bg-gray-500 text-white'
+                    }`}>
                     {ticket.status?.charAt(0).toUpperCase() + ticket.status?.slice(1).toLowerCase() || 'Unknown'}
                   </span>
                 </div>
@@ -1137,23 +1139,22 @@ function TicketList({ tickets, setSelectedTicket }) {
 function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile }) {
   const [assignee, setAssignee] = useState(ticket.assignedTo || '');
   const [staffList] = useState(['Name1', 'Name2', 'Name3', 'Name4', 'Name5']); // Example staff list
-  
+
   // Function to handle assignment
   const handleAssign = () => {
     if (assignee && assignee !== ticket.assignedTo) {
       assignTicket(ticket.id, assignee);
     }
   };
-  
+
   return (
-    <div className={`relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-200 border-l border-gray-700 shadow-lg ${
-      isMobile ? 'fixed inset-0 z-50' : 'w-72 md:w-80 lg:w-96'
-    }`}>
+    <div className={`relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-200 border-l border-gray-700 shadow-lg ${isMobile ? 'fixed inset-0 z-50' : 'w-72 md:w-80 lg:w-96'
+      }`}>
       {/* Add decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 right-0 w-full h-full opacity-10">
-          <svg 
-            viewBox="0 0 100 100" 
+          <svg
+            viewBox="0 0 100 100"
             className="w-full h-full"
             preserveAspectRatio="none"
           >
@@ -1169,7 +1170,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
             </defs>
             <circle cx="90" cy="10" r="20" fill="url(#ticketGradient)" filter="url(#ticketGlow)" />
             <circle cx="10" cy="90" r="15" fill="url(#ticketGradient)" filter="url(#ticketGlow)" />
-            <path 
+            <path
               d="M0,50 Q25,25 50,50 T100,50"
               stroke="url(#ticketGradient)"
               strokeWidth="0.5"
@@ -1183,23 +1184,23 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
       {/* Header - Add glassmorphism effect */}
       <div className="relative flex items-center justify-between p-3 sm:p-4 border-b border-gray-700 bg-gray-900/80 backdrop-blur-sm">
         <h2 className="text-lg font-bold text-purple-400">Ticket Details</h2>
-        <button 
+        <button
           onClick={onClose}
           className="p-1 hover:bg-gray-700/50 rounded-lg text-gray-400 hover:text-white transition-colors"
         >
           <X size={20} />
         </button>
       </div>
-      
+
       {/* Content - Add subtle background pattern */}
       <div className="relative p-3 sm:p-4 overflow-auto h-[calc(100vh-4rem)] bg-gradient-to-b from-transparent via-gray-900/20 to-gray-900/30">
         {/* Add subtle grid pattern */}
         <div className="absolute inset-0 opacity-5">
-          <div className="w-full h-full" 
-               style={{
-                 backgroundImage: `radial-gradient(circle at 1px 1px, rgb(99 102 241 / 0.15) 1px, transparent 0)`,
-                 backgroundSize: '24px 24px'
-               }}
+          <div className="w-full h-full"
+            style={{
+              backgroundImage: `radial-gradient(circle at 1px 1px, rgb(99 102 241 / 0.15) 1px, transparent 0)`,
+              backgroundSize: '24px 24px'
+            }}
           />
         </div>
 
@@ -1219,7 +1220,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
               </p>
             </div>
           </div>
-          
+
           {/* Ticket details */}
           <div className="space-y-4">
             {/* Issue description */}
@@ -1227,56 +1228,52 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
               <h4 className="text-sm font-medium text-gray-400 mb-2">Issue Description</h4>
               <p className="text-gray-200">{ticket.issue}</p>
             </div>
-            
+
             {/* Status section */}
             <div className="bg-gray-900 p-3 rounded-lg border border-gray-700">
               <h4 className="text-sm font-medium text-gray-400 mb-2">Status</h4>
               <div className="flex flex-wrap gap-2">
-                <button 
+                <button
                   onClick={() => updateStatus(ticket.id, 'open')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    ticket.status === 'open' 
-                      ? 'bg-red-500 text-white' 
+                  className={`px-3 py-1 rounded-full text-xs font-medium ${ticket.status === 'open'
+                      ? 'bg-red-500 text-white'
                       : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  }`}
+                    }`}
                 >
                   Open
                 </button>
-                <button 
+                <button
                   onClick={() => updateStatus(ticket.id, 'in-progress')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    ticket.status === 'in-progress' 
-                      ? 'bg-yellow-500 text-black' 
+                  className={`px-3 py-1 rounded-full text-xs font-medium ${ticket.status === 'in-progress'
+                      ? 'bg-yellow-500 text-black'
                       : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  }`}
+                    }`}
                 >
                   In Progress
                 </button>
-                <button 
+                <button
                   onClick={() => updateStatus(ticket.id, 'resolved')}
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    ticket.status === 'resolved' 
-                      ? 'bg-green-500 text-white' 
+                  className={`px-3 py-1 rounded-full text-xs font-medium ${ticket.status === 'resolved'
+                      ? 'bg-green-500 text-white'
                       : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  }`}
+                    }`}
                 >
                   Resolved
                 </button>
               </div>
             </div>
-            
+
             {/* Priority label */}
             <div className="bg-gray-900 p-3 rounded-lg border border-gray-700">
               <h4 className="text-sm font-medium text-gray-400 mb-2">Priority</h4>
-              <div className={`py-1 px-3 rounded-full inline-block text-xs font-medium ${
-                ticket.priority === 'high' ? 'bg-red-500 text-white' :
-                ticket.priority === 'medium' ? 'bg-yellow-500 text-black' :
-                'bg-green-500 text-white'
-              }`}>
+              <div className={`py-1 px-3 rounded-full inline-block text-xs font-medium ${ticket.priority === 'high' ? 'bg-red-500 text-white' :
+                  ticket.priority === 'medium' ? 'bg-yellow-500 text-black' :
+                    'bg-green-500 text-white'
+                }`}>
                 {ticket.priority?.charAt(0).toUpperCase() + ticket.priority?.slice(1).toLowerCase() || 'Low'}
               </div>
             </div>
-            
+
             {/* Assign section */}
             <div className="bg-gray-900 p-3 rounded-lg border border-gray-700">
               <h4 className="text-sm font-medium text-gray-400 mb-2">Assign Technician</h4>
@@ -1294,11 +1291,10 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                 <button
                   onClick={handleAssign}
                   disabled={!assignee || assignee === ticket.assignedTo}
-                  className={`bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-medium ${
-                    !assignee || assignee === ticket.assignedTo 
-                      ? 'opacity-50 cursor-not-allowed' 
+                  className={`bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-medium ${!assignee || assignee === ticket.assignedTo
+                      ? 'opacity-50 cursor-not-allowed'
                       : 'hover:bg-purple-700'
-                  }`}
+                    }`}
                 >
                   Assign
                 </button>
@@ -1310,7 +1306,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                 </div>
               )}
             </div>
-            
+
             {/* Activity timeline */}
             <div className="bg-gray-900 p-3 rounded-lg border border-gray-700">
               <h4 className="text-sm font-medium text-gray-400 mb-2">Activity</h4>
@@ -1362,28 +1358,28 @@ function Dashboard({ tickets }) {
   const openTickets = tickets.filter(t => t.status === 'open').length;
   const inProgressTickets = tickets.filter(t => t.status === 'in-progress').length;
   const resolvedTickets = tickets.filter(t => t.status === 'resolved').length;
-  
+
   // Calculate ticket metrics by priority
   const highPriorityTickets = tickets.filter(t => t.priority === 'high').length;
   const mediumPriorityTickets = tickets.filter(t => t.priority === 'medium').length;
   const lowPriorityTickets = tickets.filter(t => t.priority === 'low').length;
-  
+
   // Calculate floor statistics
   const floorStats = tickets.reduce((acc, ticket) => {
     const floor = ticket.floor || 'Unknown';
-    
+
     if (!acc[floor]) {
       acc[floor] = { total: 0, open: 0, inProgress: 0, resolved: 0 };
     }
-    
+
     acc[floor].total++;
     if (ticket.status === 'open') acc[floor].open++;
     if (ticket.status === 'in-progress') acc[floor].inProgress++;
     if (ticket.status === 'resolved') acc[floor].resolved++;
-    
+
     return acc;
   }, {});
-  
+
   // Example ticket trend data (in a real app, this would come from the server)
   const ticketTrend = [
     { date: '2025-05-10', open: 5, inProgress: 3, resolved: 2 },
@@ -1395,20 +1391,20 @@ function Dashboard({ tickets }) {
     { date: '2025-05-16', open: 5, inProgress: 4, resolved: 6 },
     { date: '2025-05-17', open: openTickets, inProgress: inProgressTickets, resolved: resolvedTickets }
   ];
-  
+
   // Priority percentage calculation
   const totalPriorityTickets = highPriorityTickets + mediumPriorityTickets + lowPriorityTickets;
   const highPercentage = totalPriorityTickets > 0 ? (highPriorityTickets / totalPriorityTickets) * 100 : 0;
   const mediumPercentage = totalPriorityTickets > 0 ? (mediumPriorityTickets / totalPriorityTickets) * 100 : 0;
   const lowPercentage = totalPriorityTickets > 0 ? (lowPriorityTickets / totalPriorityTickets) * 100 : 0;
-  
+
   return (
     <div className="space-y-4 md:space-y-6">
       <h2 className="text-xl md:text-2xl font-bold text-gray-100 flex items-center">
         <BarChart size={20} className="text-purple-400 mr-2 md:mr-3" />
         Dashboard Overview
       </h2>
-      
+
       {/* Top stats cards - Responsive Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex items-center shadow-md">
@@ -1420,7 +1416,7 @@ function Dashboard({ tickets }) {
             <h3 className="text-2xl font-bold text-white">{totalTickets}</h3>
           </div>
         </div>
-        
+
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex items-center shadow-md">
           <div className="bg-red-500 p-3 rounded-lg mr-4">
             <AlertTriangle size={20} className="text-white" />
@@ -1430,7 +1426,7 @@ function Dashboard({ tickets }) {
             <h3 className="text-2xl font-bold text-white">{openTickets}</h3>
           </div>
         </div>
-        
+
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex items-center shadow-md">
           <div className="bg-yellow-500 p-3 rounded-lg mr-4">
             <Clock size={20} className="text-black" />
@@ -1440,7 +1436,7 @@ function Dashboard({ tickets }) {
             <h3 className="text-2xl font-bold text-white">{inProgressTickets}</h3>
           </div>
         </div>
-        
+
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex items-center shadow-md">
           <div className="bg-green-500 p-3 rounded-lg mr-4">
             <Check size={20} className="text-white" />
@@ -1451,7 +1447,7 @@ function Dashboard({ tickets }) {
           </div>
         </div>
       </div>
-      
+
       {/* Charts row - Responsive Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Ticket Trends Chart */}
@@ -1461,12 +1457,12 @@ function Dashboard({ tickets }) {
             <TicketTrendsChart data={ticketTrend} />
           </div>
         </div>
-        
+
         {/* Priority Distribution Chart */}
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
           <h3 className="text-lg font-medium text-white mb-4">Priority Distribution</h3>
           <div className="h-64">
-            <PriorityDistribution 
+            <PriorityDistribution
               high={highPriorityTickets}
               medium={mediumPriorityTickets}
               low={lowPriorityTickets}
@@ -1474,7 +1470,7 @@ function Dashboard({ tickets }) {
           </div>
         </div>
       </div>
-      
+
       {/* Floor statistics table */}
       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
         <h3 className="text-lg font-medium text-white mb-4">Floor Statistics</h3>
@@ -1509,25 +1505,24 @@ function Dashboard({ tickets }) {
           </table>
         </div>
       </div>
-      
+
       {/* Recent activity section */}
       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
         <h3 className="text-lg font-medium text-white mb-4">Recent Activity</h3>
         <div className="space-y-3">
           {tickets.slice(0, 5).map((ticket, index) => (
             <div key={index} className="flex items-start bg-gray-900 p-3 rounded-lg">
-              <div className={`mt-1 rounded-full w-3 h-3 flex-shrink-0 ${
-                ticket.status === 'open' ? 'bg-red-500' :
-                ticket.status === 'in-progress' ? 'bg-yellow-500' : 'bg-green-500'
-              }`}></div>
+              <div className={`mt-1 rounded-full w-3 h-3 flex-shrink-0 ${ticket.status === 'open' ? 'bg-red-500' :
+                  ticket.status === 'in-progress' ? 'bg-yellow-500' : 'bg-green-500'
+                }`}></div>
               <div className="ml-3">
                 <p className="text-xs text-gray-400">
                   {new Date(ticket.createdAt).toLocaleString()}
                 </p>
                 <p className="text-sm text-gray-200">
                   {ticket.status === 'open' ? 'New ticket opened' :
-                   ticket.status === 'in-progress' ? 'Ticket assigned to ' + (ticket.assignedTo || 'staff') :
-                   'Ticket resolved'} - {ticket.deviceId || ticket.systemId}
+                    ticket.status === 'in-progress' ? 'Ticket assigned to ' + (ticket.assignedTo || 'staff') :
+                      'Ticket resolved'} - {ticket.deviceId || ticket.systemId}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">{ticket.issue}</p>
               </div>
@@ -1550,7 +1545,7 @@ function TicketTrendsChart({ data }) {
         <CartesianGrid stroke="#374151" strokeDasharray="3 3" />
         <XAxis dataKey="date" stroke="#9CA3AF" />
         <YAxis stroke="#9CA3AF" />
-        <Tooltip 
+        <Tooltip
           contentStyle={{ backgroundColor: '#1F2937', borderColor: '#4B5563', color: '#FFFFFF' }}
           itemStyle={{ color: '#FFFFFF' }}
           labelStyle={{ color: '#FFFFFF' }}
