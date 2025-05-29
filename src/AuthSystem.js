@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { initializeApp, getApps } from "firebase/app";
+import { useNavigate } from "react-router-dom";
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -7,30 +7,13 @@ import {
   signOut
 } from "firebase/auth";
 import {
-  getFirestore,
   collection,
   addDoc,
   getDocs,
   query,
   where
 } from "firebase/firestore";
-import { useNavigate } from "react-router-dom"; // <-- Add this import
-
-// Your Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyBBqvva2cJ6wy8ssrP76Vgh5H9wZNLATWE",
-  authDomain: "ithelpdesk-ebf1e.firebaseapp.com",
-  projectId: "ithelpdesk-ebf1e",
-  storageBucket: "ithelpdesk-ebf1e.firebasestorage.app",
-  messagingSenderId: "163734375056",
-  appId: "1:163734375056:web:38a2e670015e6e73eb2615",
-  measurementId: "G-QYX1WNLZ3C"
-};
-
-// Initialize Firebase only if not already initialized
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const auth = getAuth(app);
-const db = getFirestore(app);
+import { db, auth } from "./firebase"; // Import auth and db from shared firebase file
 
 export default function AuthSystem({ onLogin }) {
   const [mode, setMode] = useState("login"); // "login" or "register"
