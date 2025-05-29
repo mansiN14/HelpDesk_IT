@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Bell, User, Search, Plus, Info, Clock, CheckCircle, LogOut } from "lucide-react";
+import { Bell, User, Search, Plus, Info, Clock, CheckCircle, LogOut, Laptop, Users, Cpu, Phone, Award, Map } from "lucide-react";
 import { LayoutDashboard, Ticket, BookOpen, BarChart2 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import Chatbot from './chatbot';
 import { useMemo } from "react";
+import { useRef } from "react";
 
 import { 
   getAuth, 
@@ -53,8 +54,66 @@ const db = getFirestore(app);
 const floorConfig = {
   S1: {
     systems: [
-      { id: "S1-01" }, { id: "S1-02" }, { id: "S1-03" }, { id: "S1-04" }, { id: "S1-05" },
-      { id: "S1-06" }, { id: "S1-07" }, { id: "S1-08" }, { id: "S1-09" }, { id: "S1-10" }
+      { id: "WS-001" }, { id: "WS-002" }, { id: "WS-003" }, { id: "WS-004" }, { id: "WS-005" },
+      { id: "WS-006" }, { id: "WS-007" }, { id: "WS-008" }, { id: "WS-009" }, { id: "WS-010" },
+      { id: "WS-011" }, { id: "WS-012" }, { id: "WS-013" }, { id: "WS-014" }, { id: "WS-015" },
+      { id: "WS-016" }, { id: "WS-017" }, { id: "WS-018" }, { id: "WS-019" }, { id: "WS-020" },
+      { id: "WS-021" }, { id: "WS-022" }, { id: "WS-023" }, { id: "WS-024" }, { id: "WS-025" },
+      { id: "WS-026" }, { id: "WS-027" }, { id: "WS-028" }, { id: "WS-029" }, { id: "WS-030" },
+      { id: "WS-031" }, { id: "WS-032" }, { id: "WS-033" }, { id: "WS-034" }, { id: "WS-035" },
+      { id: "WS-036" }, { id: "WS-037" }, { id: "WS-038" }, { id: "WS-039" }, { id: "WS-040" },
+      { id: "WS-041" }, { id: "WS-042" }, { id: "WS-043" }, { id: "WS-044" }, { id: "WS-045" },
+      { id: "WS-046" }, { id: "WS-047" }, { id: "WS-048" }, { id: "WS-049" }, { id: "WS-050" },
+      { id: "WS-051" }, { id: "WS-052" }, { id: "WS-053" }, { id: "WS-054" }, { id: "WS-055" },
+      { id: "WS-056" }, { id: "WS-057" }, { id: "WS-058" }, { id: "WS-059" }, { id: "WS-060" },
+      { id: "WS-061" }, { id: "WS-062" }, { id: "WS-063" }, { id: "WS-064" }, { id: "WS-065" },
+      { id: "WS-066" }, { id: "WS-067" }, { id: "WS-068" }, { id: "WS-069" }, { id: "WS-070" },
+      { id: "WS-071" }, { id: "WS-072" }, { id: "WS-073" }, { id: "WS-074" }, { id: "WS-075" },
+      { id: "WS-076" }, { id: "WS-077" }, { id: "WS-078" }, { id: "WS-079" }, { id: "WS-080" },
+      { id: "WS-081" }, { id: "WS-082" }, { id: "WS-083" }, { id: "WS-084" }, { id: "WS-085" },
+      { id: "WS-086" }, { id: "WS-087" }, { id: "WS-088" }, { id: "WS-089" }, { id: "WS-090" },
+      { id: "WS-091" }, { id: "WS-092" }, { id: "WS-093" }, { id: "WS-094" }, { id: "WS-095" },
+      { id: "WS-096" }, { id: "WS-097" }, { id: "WS-098" }, { id: "WS-099" }, { id: "WS-100" },
+      { id: "WS-101" }, { id: "WS-102" }, { id: "WS-103" }, { id: "WS-104" }, { id: "WS-105" },
+      { id: "WS-106" }, { id: "WS-107" }, { id: "WS-108" }, { id: "WS-109" }, { id: "WS-110" },
+      { id: "WS-111" }, { id: "WS-112" }, { id: "WS-113" }, { id: "WS-114" }, { id: "WS-115" },
+      { id: "WS-116" }, { id: "WS-117" }, { id: "WS-118" }, { id: "WS-119" }, { id: "WS-120" },
+      { id: "WS-121" }, { id: "WS-122" }, { id: "WS-123" }, { id: "WS-124" }, { id: "WS-125" },
+      { id: "WS-126" }, { id: "WS-127" }, { id: "WS-128" }, { id: "WS-129" }, { id: "WS-130" },
+      { id: "WS-131" }, { id: "WS-132" }, { id: "WS-133" }, { id: "WS-134" }, { id: "WS-135" },
+      { id: "WS-136" }, { id: "WS-137" }, { id: "WS-138" }, { id: "WS-139" }, { id: "WS-140" },
+      { id: "WS-141" }, { id: "WS-142" }, { id: "WS-143" }, { id: "WS-144" }, { id: "WS-145" },
+      { id: "WS-146" }, { id: "WS-147" }, { id: "WS-148" }, { id: "WS-149" }, { id: "WS-150" },
+      { id: "WS-151" }, { id: "WS-152" }, { id: "WS-153" }, { id: "WS-154" }, { id: "WS-155" },
+      { id: "WS-156" }, { id: "WS-157" }, { id: "WS-158" }, { id: "WS-159" }, { id: "WS-160" },
+      { id: "WS-161" }, { id: "WS-162" }, { id: "WS-163" }, { id: "WS-164" }, { id: "WS-165" },
+      { id: "WS-166" }, { id: "WS-167" }, { id: "WS-168" }, { id: "WS-169" }, { id: "WS-170" },
+      { id: "WS-171" }, { id: "WS-172" }, { id: "WS-173" }, { id: "WS-174" }, { id: "WS-175" },
+      { id: "WS-176" }, { id: "WS-177" }, { id: "WS-178" }, { id: "WS-179" }, { id: "WS-180" },
+      { id: "WS-181" }, { id: "WS-182" }, { id: "WS-183" }, { id: "WS-184" }, { id: "WS-185" },
+      { id: "WS-186" }, { id: "WS-187" }, { id: "WS-188" }, { id: "WS-189" }, { id: "WS-190" },
+      { id: "WS-191" }, { id: "WS-192" }, { id: "WS-193" }, { id: "WS-194" }, { id: "WS-195" },
+      { id: "WS-196" }, { id: "WS-197" }, { id: "WS-198" }, { id: "WS-199" }, { id: "WS-200" },
+      { id: "WS-201" }, { id: "WS-202" }, { id: "WS-203" }, { id: "WS-204" }, { id: "WS-205" },
+      { id: "WS-206" }, { id: "WS-207" }, { id: "WS-208" }, { id: "WS-209" }, { id: "WS-210" },
+      { id: "WS-211" }, { id: "WS-212" }, { id: "WS-213" }, { id: "WS-214" }, { id: "WS-215" },
+      { id: "WS-216" }, { id: "WS-217" }, { id: "WS-218" }, { id: "WS-219" }, { id: "WS-220" },
+      { id: "WS-221" }, { id: "WS-222" }, { id: "WS-223" }, { id: "WS-224" }, { id: "WS-225" },
+      { id: "WS-226" }, { id: "WS-227" }, { id: "WS-228" }, { id: "WS-229" }, { id: "WS-230" },
+      { id: "WS-231" }, { id: "WS-232" }, { id: "WS-233" }, { id: "WS-234" }, { id: "WS-235" },
+      { id: "WS-236" }, { id: "WS-237" }, { id: "WS-238" }, { id: "WS-239" }, { id: "WS-240" },
+      { id: "WS-241" }, { id: "WS-242" }, { id: "WS-243" }, { id: "WS-244" }, { id: "WS-245" },
+      { id: "WS-246" }, { id: "WS-247" }, { id: "WS-248" }, { id: "WS-249" }, { id: "WS-250" },
+      { id: "WS-251" }, { id: "WS-252" }, { id: "WS-253" }, { id: "WS-254" }, { id: "WS-255" },
+      { id: "WS-256" }, { id: "WS-257" }, { id: "WS-258" }, { id: "WS-259" }, { id: "WS-260" },
+      { id: "WS-261" }, { id: "WS-262" }, { id: "WS-263" }, { id: "WS-264" }, { id: "WS-265" },
+      { id: "WS-266" }, { id: "WS-267" }, { id: "WS-268" }, { id: "WS-269" }, { id: "WS-270" },
+      { id: "WS-271" }, { id: "WS-272" }, { id: "WS-273" }, { id: "WS-274" }, { id: "WS-275" },
+      { id: "WS-276" }, { id: "WS-277" }, { id: "WS-278" }, { id: "WS-279" }, { id: "WS-280" },
+      { id: "WS-281" }, { id: "WS-282" }, { id: "WS-283" }, { id: "WS-284" }, { id: "WS-285" },
+      { id: "WS-286" }, { id: "WS-287" }, { id: "WS-288" }, { id: "WS-289" }, { id: "WS-290" },
+      
+
     ],
     cabins: [
       { id: 1, systems: [{ id: "S1-C1-01" }, { id: "S1-C1-02" }, { id: "S1-C1-03" }, { id: "S1-C1-04" }, { id: "S1-C1-05" }] },
@@ -137,6 +196,8 @@ export default function ITHelpDesk() {
   const [selectedFloor, setSelectedFloor] = useState("S1");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // State to handle mobile menu
   const [sidebarOpen, setSidebarOpen] = useState(false); // Add missing state for sidebar
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false); // State for user dropdown
+  const userDropdownRef = useRef(null);
   
   // Form state for creating new tickets
   const [newTicket, setNewTicket] = useState({
@@ -144,7 +205,8 @@ export default function ITHelpDesk() {
     description: "",
     priority: "Medium",
     department: "IT",
-    deviceId: "" // Added deviceId for linking ticket to device
+    systemId: "",
+    floor: "S1" // Add floor to the ticket state
   });
 
   // Helper to get all device IDs for a floor (open office + cabins)
@@ -157,7 +219,8 @@ export default function ITHelpDesk() {
     return [...openSystems, ...cabinSystems];
   };
 
-  const devices = getDevicesForFloor(selectedFloor);
+  // Get available systems for the current floor
+  const availableSystems = getDevicesForFloor(selectedFloor);
 
   // Check auth state on mount
   useEffect(() => {
@@ -227,6 +290,7 @@ export default function ITHelpDesk() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setIsUserDropdownOpen(false); // Close dropdown on logout
     } catch (error) {
       console.error("Error signing out: ", error);
     }
@@ -389,10 +453,11 @@ export default function ITHelpDesk() {
       // Add the ticket to Firestore
       const ticketData = {
         ...newTicket,
-        status: "Open",
+        status: "open", // Changed to lowercase to match the expected format
         createdBy: user.uid,
         createdAt: Timestamp.now(),
-        userEmail: user.email
+        userEmail: user.email,
+        floor: selectedFloor // Add the current floor
       };
       
       await addDoc(collection(db, "tickets"), ticketData);
@@ -404,6 +469,8 @@ export default function ITHelpDesk() {
         description: "",
         priority: "Medium",
         department: "IT",
+        systemId: "",
+        floor: "S1" // Reset floor
       });
       
       // Fetch tickets again to update the list
@@ -1050,6 +1117,41 @@ export default function ITHelpDesk() {
               </div>
               
               <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="floor">
+                  {language === "English" ? "Floor" : "मजला"}
+                </label>
+                <select
+                  id="floor"
+                  name="floor"
+                  className="w-full border rounded-md p-2"
+                  value={newTicket.floor}
+                  onChange={handleInputChange}
+                  required
+                >
+                  <option value="S1">S1</option>
+                  <option value="S2">S2</option>
+                  <option value="S3">S3</option>
+                  <option value="S4">S4</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="systemId">
+                  {language === "English" ? "System ID" : "सिस्टम आयडी"}
+                </label>
+                <input
+                  type="text"
+                  id="systemId"
+                  name="systemId"
+                  className="w-full border rounded-md p-2"
+                  value={newTicket.systemId}
+                  onChange={handleInputChange}
+                  placeholder={language === "English" ? "Enter system ID (e.g., WS-001)" : "सिस्टम आयडी टाका"}
+                  required
+                />
+              </div>
+              
+              <div>
                 <label className="block text-sm font-medium mb-1" htmlFor="department">
                   {language === "English" ? "Department" : "विभाग"}
                 </label>
@@ -1097,27 +1199,6 @@ export default function ITHelpDesk() {
                     {language === "English" ? "High" : "उच्च"}
                   </option>
                 </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="deviceId">
-                  {language === "English" ? "Device/System ID" : "उपकरण/प्रणाली आयडी"}
-                </label>
-                <input
-                  list="device-options"
-                  id="deviceId"
-                  name="deviceId"
-                  className="w-full border rounded-md p-2"
-                  value={newTicket.deviceId}
-                  onChange={handleInputChange}
-                  placeholder={language === "English" ? "Select or enter device/system ID" : "उपकरण/प्रणाली आयडी निवडा किंवा टाका"}
-                  autoComplete="off"
-                />
-                <datalist id="device-options">
-                  {uniqueDevices.map(id => (
-                    <option key={id} value={id} />
-                  ))}
-                </datalist>
               </div>
               
               <div className="md:col-span-2">
@@ -1443,59 +1524,61 @@ export default function ITHelpDesk() {
   }
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-purple-50 to-indigo-100 overflow-hidden">
+    <div className="flex h-screen overflow-hidden">
       {/* Add SvgBackground here */}
       <SvgBackground />
       
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-white shadow transform transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static lg:inset-auto`}>
-        <div className="flex items-center justify-between h-16 px-6 border-b">
-          <div className="flex items-center">
-            <span className="text-xl font-semibold text-purple-600">HelpDesk</span>
+      <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-white/50 backdrop-blur-md shadow transform transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static lg:inset-auto`}>
+        
+          <div className="flex items-center justify-between h-16 px-6 border-b">
+            <div className="flex items-center">
+              <span className="text-xl font-semibold text-purple-600">HelpDesk</span>
+            </div>
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
+              <X size={24} />
+            </button>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
-            <X size={24} />
-          </button>
-        </div>
-        <div className="p-4">
-          <nav className="space-y-1">
-            <button 
-              onClick={() => setActiveTab("dashboard")} 
-              className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "dashboard" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
-            >
-              <Layout size={20} className="mr-3" />
-              <span>{language === "English" ? "Dashboard" : "डॅशबोर्ड"}</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab("tickets")} 
-              className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "tickets" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
-            >
-              <Ticket size={20} className="mr-3" />
-              <span>{language === "English" ? "Tickets" : "तिकिटे"}</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab("createTicket")} 
-              className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "createTicket" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
-            >
-              <FilePlus size={20} className="mr-3" />
-              <span>{language === "English" ? "Create Ticket" : "तिकीट तयार करा"}</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab("analytics")} 
-              className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "analytics" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
-            >
-              <BarChart2 size={20} className="mr-3" />
-              <span>{language === "English" ? "Analytics" : "अनॅलिटिक्स"}</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab("help")} 
-              className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "help" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
-            >
-              <HelpCircle size={20} className="mr-3" />
-              <span>{language === "English" ? "Help" : "मदत"}</span>
-            </button>
-          </nav>
-        </div>
+          <div className="p-4">
+            <nav className="space-y-1">
+              <button 
+                onClick={() => setActiveTab("dashboard")} 
+                className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "dashboard" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
+              >
+                <Layout size={20} className="mr-3" />
+                <span>{language === "English" ? "Dashboard" : "डॅशबोर्ड"}</span>
+              </button>
+              <button 
+                onClick={() => setActiveTab("tickets")} 
+                className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "tickets" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
+              >
+                <Ticket size={20} className="mr-3" />
+                <span>{language === "English" ? "Tickets" : "तिकिटे"}</span>
+              </button>
+              <button 
+                onClick={() => setActiveTab("createTicket")} 
+                className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "createTicket" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
+              >
+                <FilePlus size={20} className="mr-3" />
+                <span>{language === "English" ? "Create Ticket" : "तिकीट तयार करा"}</span>
+              </button>
+              <button 
+                onClick={() => setActiveTab("analytics")} 
+                className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "analytics" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
+              >
+                <BarChart2 size={20} className="mr-3" />
+                <span>{language === "English" ? "Analytics" : "अनॅलिटिक्स"}</span>
+              </button>
+              <button 
+                onClick={() => setActiveTab("help")} 
+                className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "help" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
+              >
+                <HelpCircle size={20} className="mr-3" />
+                <span>{language === "English" ? "Help" : "मदत"}</span>
+              </button>
+            </nav>
+          </div>
+        
       </div>
 
       {/* Main Content */}
@@ -1532,10 +1615,29 @@ export default function ITHelpDesk() {
               <button className="p-1 rounded-full hover:bg-gray-100">
                 <Bell size={20} />
               </button>
-              <div className="flex items-center">
-                <div className="h-8 w-8 rounded-full bg-purple-200 flex items-center justify-center">
+              <div className="relative flex items-center">
+                <button 
+                  className="h-8 w-8 rounded-full bg-purple-200 flex items-center justify-center hover:bg-purple-300 focus:outline-none"
+                  onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                >
                   <User size={16} />
-                </div>
+                </button>
+                {isUserDropdownOpen && (
+                  <div 
+                    ref={userDropdownRef}
+                    className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50"
+                  >
+                    <div className="block px-4 py-2 text-sm text-gray-700">{user?.email}</div>
+                    <div className="border-t border-gray-100"></div>
+                    <button 
+                      onClick={handleLogout} 
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <LogOut size={16} className="inline mr-2" />
+                      {language === "English" ? "Logout" : "लॉगआउट"}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
