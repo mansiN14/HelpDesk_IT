@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate } from "react-router-dom";
 import AuthSystem from "./AuthSystem";
 import UserDashboard from "./UserDashboard";
 import AdminDashboard from "./AdminDashboard";
+import FloorMap from "./FloorMap";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -24,6 +25,7 @@ function App() {
       <Route path="/" element={<AuthSystem onLogin={handleLogin} />} />
       <Route path="/userdashboard" element={<UserDashboard user={user} />} />
       <Route path="/admindashboard" element={<AdminDashboard user={user} />} />
+      <Route path="/floormap" element={<FloorMap />} />
     </Routes>
   );
 }
