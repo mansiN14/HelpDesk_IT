@@ -1,24 +1,90 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, setDoc, query, where, orderBy, limit, onSnapshot } from "firebase/firestore";
-import { initializeApp } from "firebase/app";
-import { Clock, Users, AlertTriangle, Check, Map, BarChart, Monitor, Cpu, Laptop, Award, Phone, Menu, X, Plus, Info } from 'lucide-react';
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
+import { collection, addDoc, getDocs, doc, updateDoc, setDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { Clock, Users, AlertTriangle, Check, Map, Monitor, Cpu, Laptop, Award, Phone, Menu, X, Plus, Info, Bell, ChevronDown, Calendar } from 'lucide-react';
+import { BarChart, Bar, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { ResponsiveContainer } from 'recharts';
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "./firebase";
+import ReactCalendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
 
-// Your Firebase configuration object
-const firebaseConfig = {
-  apiKey: "AIzaSyBBqvva2cJ6wy8ssrP76Vgh5H9wZNLATWE",
-  authDomain: "ithelpdesk-ebf1e.firebaseapp.com",
-  projectId: "ithelpdesk-ebf1e",
-  storageBucket: "ithelpdesk-ebf1e.firebasestorage.app",
-  messagingSenderId: "163734375056",
-  appId: "1:163734375056:web:38a2e670015e6e73eb2615",
-  measurementId: "G-QYX1WNLZ3C"
-};
+// Custom calendar styles
+const calendarStyles = `
+  .react-calendar-custom {
+    width: 350px;
+    max-width: 100%;
+    background: transparent !important;
+    border: none !important;
+    font-family: inherit;
+  }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+  .react-calendar-custom .react-calendar__tile {
+    padding: 1em 0.5em;
+    background: transparent;
+    text-align: center;
+    line-height: 16px;
+    color: white;
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+  }
+
+  .react-calendar-custom .react-calendar__tile:enabled:hover,
+  .react-calendar-custom .react-calendar__tile:enabled:focus {
+    background: rgba(139, 92, 246, 0.2);
+    color: white;
+    border-radius: 0.5rem;
+  }
+
+  .react-calendar-custom .react-calendar__tile--now {
+    background: rgba(139, 92, 246, 0.3);
+    border-radius: 0.5rem;
+    font-weight: bold;
+    color: white;
+  }
+
+  .react-calendar-custom .react-calendar__tile--active {
+    background: rgba(139, 92, 246, 0.5) !important;
+    color: white;
+    border-radius: 0.5rem;
+  }
+
+  .react-calendar-custom .react-calendar__navigation button {
+    color: white;
+    min-width: 44px;
+    background: transparent;
+    font-size: 16px;
+    margin-top: 8px;
+  }
+
+  .react-calendar-custom .react-calendar__navigation button:enabled:hover,
+  .react-calendar-custom .react-calendar__navigation button:enabled:focus {
+    background: rgba(139, 92, 246, 0.2);
+    border-radius: 0.5rem;
+  }
+
+  .react-calendar-custom .react-calendar__month-view__weekdays {
+    text-align: center;
+    text-transform: uppercase;
+    font-weight: bold;
+    font-size: 0.75em;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .react-calendar-custom .react-calendar__month-view__weekdays__weekday {
+    padding: 0.5em;
+  }
+
+  .react-calendar-custom .react-calendar__month-view__weekdays__weekday abbr {
+    text-decoration: none;
+  }
+`;
+
+// Add styles to document
+if (typeof document !== 'undefined') {
+  const styleSheet = document.createElement("style");
+  styleSheet.innerText = calendarStyles;
+  document.head.appendChild(styleSheet);
+}
 
 // Example initial data (customize as needed)
 const initialTickets = [
@@ -71,7 +137,7 @@ const spaceTypes = {
   TECHNICAL_WS: { prefix: 'TWS', color: '#e8f5e8', borderColor: '#388e3c', range: 'TWS01-TWS26', total: 26 },
   CONFERENCE: { prefix: 'CO', color: '#ffebee', borderColor: '#d32f2f', range: 'CO01-CO02', total: 2 },
   TEAM_LEAD: { prefix: 'TL', color: '#f1f8e9', borderColor: '#689f38', range: 'TL01', total: 1 },
- };
+};
 
 
 // Layout generator as a hook
@@ -116,10 +182,10 @@ function useOfficeLayout(config) {
       for (let col = 0; col < config.gridWidth && mdPlaced < config.totalMDCabins; col++) {
         if (grid[row][col].type === 'EMPTY') {
           grid[row][col] = {
-            type: 'MD_CABIN',
+          type: 'MD_CABIN',
             id: `CB-${String(mdCounter).padStart(2, '0')}`
-          };
-          mdCounter++;
+        };
+        mdCounter++;
           mdPlaced++;
         }
       }
@@ -145,10 +211,10 @@ function useOfficeLayout(config) {
     for (let row = 0; row < config.gridHeight && coPlaced < config.totalConferenceRooms; row++) {
       for (let col = 0; col < config.gridWidth && coPlaced < config.totalConferenceRooms; col++) {
         if (grid[row][col].type === 'EMPTY') {
-          grid[row][col] = {
+            grid[row][col] = {
             type: 'CONFERENCE',
             id: `CO-${String(coCounter).padStart(2, '0')}`
-          };
+            };
           coCounter++;
           coPlaced++;
         }
@@ -174,72 +240,100 @@ function useOfficeLayout(config) {
   }, [config]);
 }
 
-// OfficeDesk Component - Vertical Rectangular with Transparent purple, Glowing Border, and Centered ID
+// OfficeDesk Component - Updated to use SVG shape and status-based styling
 const OfficeDesk = ({ system, status, onClick }) => {
-  const baseClasses = "relative flex flex-col items-center justify-center rounded-md border-2 transition-all duration-200 overflow-hidden";
-  const sizeClasses = "w-10 h-14 md:w-16 md:h-24";
+  // Removed baseClasses and sizeClasses from the outer div to rely on SVG for shape/size
+  const baseClasses = "relative flex items-center justify-center cursor-pointer transition-all duration-200 overflow-hidden";
 
-  // Get the appropriate background color based on status
-  const getStatusBackground = () => {
-    switch (status) {
-      case 'open':
-        return 'bg-red-500/20 border-red-500 cursor-pointer hover:scale-105';
-      case 'in-progress':
-        return 'bg-yellow-500/20 border-yellow-500 cursor-pointer';
-      case 'resolved':
-        return 'bg-purple-500/20 border-purple-500 cursor-pointer';
-      default:
-        return 'bg-purple-500/20 border-purple-500 cursor-pointer';
-    }
-  };
+  // Determine colors and effects based on status
+  const isAvailableOrResolved = status === 'available' || status === 'resolved';
+  const isTicketOpen = status === 'open';
 
-  const appearanceClasses = getStatusBackground();
-  const statusColor = status === 'open' ? 'bg-red-500' : status === 'in-progress' ? 'bg-yellow-500' : 'bg-purple-500';
-  const statusText = status?.charAt(0).toUpperCase() + status?.slice(1).toLowerCase();
+  // SVG element styles for the monitor screen based on status
+  const monitorScreenStroke = isTicketOpen ? '#FF0000' : '#6B9AFF'; // Red for open, Blue otherwise
+  const monitorScreenStrokeWidth = isTicketOpen ? '12' : '8'; // Thicker stroke for open
 
-  const handleClick = () => {
-    if (status !== '') {
-      onClick();
-    }
-  };
+  // Add a transparent red rectangle inside the screen for open tickets
+  const openTicketOverlay = isTicketOpen ? (
+    <rect
+      x="30" y="20" width="240" height="160" rx="20" ry="20"
+      fill="rgba(255, 0, 0, 0.3)" // Red with 30% opacity
+    />
+  ) : null;
+
+  const hoverEffectClass = isAvailableOrResolved ? 'hover:scale-105' : ''; // Hover effect for available/resolved
+
+  // Removed Status Indicator logic
+  // const showStatusIndicator = status === 'open' || status === 'in-progress';
+  // const statusColor = status === 'open' ? 'bg-red-500' : status === 'in-progress' ? 'bg-yellow-500' : '';
+  // const statusText = status?.charAt(0).toUpperCase() + status?.slice(1).toLowerCase();
 
   return (
+    // The outer div now primarily manages size and click/hover effects
     <div
-      className={`${baseClasses} ${sizeClasses} ${appearanceClasses}`}
-      onClick={handleClick}
+      // Using flex classes for center alignment and applying responsive size directly here.
+      // Tailwind responsive utility classes like w-14 h-20 md:w-24 md:h-32 should be applied to this div.
+      className={`${baseClasses} w-14 h-20 md:w-24 md:h-32 ${hoverEffectClass}`}
+      onClick={onClick}
     >
-      {/* System ID - Centered */}
-      <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-mono text-center px-0.5 leading-tight">
-        {system?.id || 'N/A'}
-      </div>
+      {/* SVG Monitor Shape */}
+      {/* Adjust viewBox and size properties to make it responsive within the container div */}
+      <svg width="100%" height="100%" viewBox="0 0 300 240" xmlns="http://www.w3.org/2000/svg" className="block m-auto">
+        {/* Monitor screen */}
+        <rect
+          x="30" y="20" width="240" height="160" rx="20" ry="20"
+          fill="#5A6B8C"
+          stroke={monitorScreenStroke}
+          strokeWidth={monitorScreenStrokeWidth}
+        />
 
-      {/* Status Indicator / Priority - Bottom - Only show for open and in-progress */}
-      {status !== 'available' && status !== 'resolved' && (
-        <div className="absolute bottom-0 left-0 right-0 text-white text-[6px] sm:text-[8px] font-bold text-center py-0.5 leading-tight bg-gray-700/80">
+        {/* Transparent red overlay for open tickets */}
+        {openTicketOverlay}
+
+        {/* Monitor stand base */}
+        <rect x="110" y="200" width="80" height="12" rx="6" ry="6" fill="#6B9AFF"/>
+
+        {/* Monitor stand neck */}
+        <rect x="145" y="180" width="10" height="30" fill="#6B9AFF"/>
+
+        {/* System ID Text */}
+        <text
+          x="150" /* Center X */
+          y="100" /* Center Y within the screen rect (adjusted for text baseline) */
+          fontSize="40" /* Adjust size as needed */
+          fill="#FFFFFF" /* White text color */
+          textAnchor="middle" /* Align text horizontally in the middle */
+          dominantBaseline="middle" /* Align text vertically in the middle */
+          className="font-mono select-none pointer-events-none" // Prevent text selection/interfering with clicks
+        >
+          {system?.id || 'N/A'}
+        </text>
+      </svg>
+
+      {/* Status Indicator - Removed */}
+      {/* {showStatusIndicator && (
+        <div className="absolute bottom-0 left-0 right-0 text-white text-[7px] sm:text-[9px] font-bold text-center py-0.5 leading-tight">
           <span className={`px-1 py-0.5 rounded-sm ${statusColor}`}>
             {statusText || 'Low'}
           </span>
         </div>
-      )}
+      )} */}
 
-      {/* Overlay for hover effect - Only for open tickets */}
-      {status === 'open' && (
-         <div className="absolute inset-0 bg-red-500 opacity-0 hover:opacity-20 transition-opacity">
-         </div>
-      )}
+      {/* Overlay for hover effect - Applied via CSS class on the outer div now */}
+      {/* Status is handled by direct SVG styling */}
     </div>
   );
 };
 
 // Chart Components
-function TicketTrendsChart({ data }) {
+function IssueOverviewChart({ data }) {
   return (
     <div className="w-full h-full min-h-[300px]">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-          <XAxis 
-            dataKey="date" 
+          <XAxis
+            dataKey="date"
             stroke="#9CA3AF"
             tick={{ fontSize: 12 }}
             tickFormatter={(value) => {
@@ -247,7 +341,7 @@ function TicketTrendsChart({ data }) {
               return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             }}
           />
-          <YAxis 
+          <YAxis
             stroke="#9CA3AF"
             tick={{ fontSize: 12 }}
             allowDecimals={false}
@@ -260,61 +354,22 @@ function TicketTrendsChart({ data }) {
               color: '#F3F4F6'
             }}
             labelStyle={{ color: '#9CA3AF' }}
-            formatter={(value, name) => {
-              const formattedName = name === 'open' ? 'Open' : 
-                                 name === 'inProgress' ? 'In Progress' : 
-                                 'Resolved';
-              return [value, formattedName];
-            }}
           />
-          <Legend 
-            verticalAlign="top" 
+          <Legend
+            verticalAlign="top"
             height={36}
-            formatter={(value) => {
-              return value === 'open' ? 'Open' : 
-                     value === 'inProgress' ? 'In Progress' : 
-                     'Resolved';
-            }}
+            formatter={(value) => value}
           />
-          <Line 
-            type="monotone" 
-            dataKey="open" 
-            stroke="#EF4444" 
-            strokeWidth={2}
-            dot={{ r: 4, strokeWidth: 2 }}
-            activeDot={{ r: 6, strokeWidth: 2 }}
-          />
-          <Line 
-            type="monotone" 
-            dataKey="inProgress" 
-            stroke="#F59E0B" 
-            strokeWidth={2}
-            dot={{ r: 4, strokeWidth: 2 }}
-            activeDot={{ r: 6, strokeWidth: 2 }}
-          />
-          <Line 
-            type="monotone" 
-            dataKey="resolved" 
-            stroke="#10B981" 
-            strokeWidth={2}
-            dot={{ r: 4, strokeWidth: 2 }}
-            activeDot={{ r: 6, strokeWidth: 2 }}
-          />
-        </LineChart>
+          <Bar dataKey="count" fill="#8B5CF6" />
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function PriorityDistribution({ high, medium, low }) {
-  const data = [
-    { name: 'High', value: high, color: '#EF4444' },
-    { name: 'Medium', value: medium, color: '#F59E0B' },
-    { name: 'Low', value: low, color: '#10B981' }
-  ];
-
-  // Calculate total for percentage
-  const total = high + medium + low;
+function IssueBreakdownChart({ data, total }) {
+  // data is expected to be an array like: [{ name: 'Category', value: count, color: '#color' }, ...]
+  // total is the total number for percentage calculation
 
   return (
     <div className="w-full h-full min-h-[300px] relative">
@@ -324,8 +379,8 @@ function PriorityDistribution({ high, medium, low }) {
             data={data}
             cx="50%"
             cy="50%"
-            innerRadius={60}
-            outerRadius={80}
+            innerRadius={60} // Adjust size as needed
+            outerRadius={90} // Adjust size as needed
             fill="#8884d8"
             paddingAngle={5}
             dataKey="value"
@@ -334,6 +389,10 @@ function PriorityDistribution({ high, medium, low }) {
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}
           </Pie>
+          {/* Centered Total Text */}
+          <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-4xl font-bold text-white">
+             {total}
+           </text>
           <Tooltip
             contentStyle={{
               backgroundColor: '#1F2937',
@@ -346,23 +405,16 @@ function PriorityDistribution({ high, medium, low }) {
               return [`${value} (${percentage}%)`, name];
             }}
           />
-          <Legend
-            verticalAlign="bottom"
-            height={36}
-            formatter={(value, entry) => {
-              const percentage = ((entry.payload.value / total) * 100).toFixed(1);
-              return (
-                <span className="text-gray-300 text-sm">
-                  {value} ({percentage}%)
-                </span>
-              );
-            }}
-          />
+          {/* Legend is handled by the summary boxes below the chart in this design */}
         </PieChart>
       </ResponsiveContainer>
+       {/* Summary boxes below the chart */}
+       {/* These are now rendered in the Dashboard component where IssueBreakdownChart is used */}
+       {/* If you prefer the chart component to render them, move the mapping logic here */}
+       {/* For now, leaving them in Dashboard for flexibility */}
       {total === 0 && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-gray-400 text-sm">No priority data available</p>
+          <p className="text-gray-400 text-sm">No breakdown data available</p>
         </div>
       )}
     </div>
@@ -370,12 +422,21 @@ function PriorityDistribution({ high, medium, low }) {
 }
 
 // Dashboard Component - Updated for better responsiveness
-function Dashboard({ tickets }) {
+function Dashboard({ tickets, usersList }) {
   // Calculate summary statistics
   const totalTickets = tickets.length;
   const openTickets = tickets.filter(t => t.status === 'open').length;
   const inProgressTickets = tickets.filter(t => t.status === 'in-progress').length;
   const resolvedTickets = tickets.filter(t => t.status === 'resolved').length;
+  const unresolvedTickets = openTickets + inProgressTickets; // Unresolved = Open + In Progress
+  const pendingQueue = openTickets + inProgressTickets; // Queue = Current Pending Issues (assuming this is open + in-progress)
+
+  // Calculate ticket metrics by type (placeholder - assuming issue description contains keywords)
+  // Calculate ticket metrics by type using the new 'type' field
+  const networkIssues = tickets.filter(t => t.type?.toLowerCase() === 'network').length;
+  const softwareIssues = tickets.filter(t => t.type?.toLowerCase() === 'software').length;
+  const hardwareIssues = tickets.filter(t => t.type?.toLowerCase() === 'hardware').length;
+  const otherIssues = tickets.filter(t => t.type?.toLowerCase() === 'other' || !t.type).length;
 
   // Calculate ticket metrics by priority
   const highPriorityTickets = tickets.filter(t => t.priority?.toLowerCase() === 'high').length;
@@ -398,24 +459,121 @@ function Dashboard({ tickets }) {
     return acc;
   }, {});
 
-  // Example ticket trend data (in a real app, this would come from the server)
-  const ticketTrend = [
-    { date: '2025-05-10', open: 5, inProgress: 3, resolved: 2 },
-    { date: '2025-05-11', open: 7, inProgress: 4, resolved: 3 },
-    { date: '2025-05-12', open: 6, inProgress: 5, resolved: 5 },
-    { date: '2025-05-13', open: 4, inProgress: 6, resolved: 7 },
-    { date: '2025-05-14', open: 8, inProgress: 4, resolved: 5 },
-    { date: '2025-05-15', open: 6, inProgress: 3, resolved: 8 },
-    { date: '2025-05-16', open: 5, inProgress: 4, resolved: 6 },
-    { date: '2025-05-17', open: openTickets, inProgress: inProgressTickets, resolved: resolvedTickets }
+  // Function to generate daily ticket counts
+  const generateDailyTicketCounts = (tickets, days = 7) => {
+    const dailyCounts = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Initialize counts for the last 'days' number of days
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+      dailyCounts[dateString] = 0;
+    }
+
+    // Debug log for date range
+    console.log("generateDailyTicketCounts: Date range initialized:", Object.keys(dailyCounts));
+
+    // Count tickets by creation date
+    tickets.forEach(ticket => {
+      try {
+        let createdAtDate;
+        if (ticket.createdAt?.toDate) {
+          // Handle Firestore Timestamp
+          createdAtDate = ticket.createdAt.toDate();
+        } else if (typeof ticket.createdAt === 'string') {
+          // Handle string date
+          createdAtDate = new Date(ticket.createdAt);
+        } else if (ticket.createdAt instanceof Date) {
+          // Handle Date object
+          createdAtDate = ticket.createdAt;
+        } else {
+          console.warn("generateDailyTicketCounts: Invalid date format for ticket:", ticket.id, ticket.createdAt);
+          return;
+        }
+
+        // Set time to midnight for accurate date comparison
+        createdAtDate.setHours(0, 0, 0, 0);
+          const dateString = createdAtDate.toISOString().split('T')[0];
+
+        // Debug log for ticket date processing
+        // console.log("generateDailyTicketCounts: Processing ticket:", { id: ticket.id, createdAt: ticket.createdAt, dateString: dateString }); // Keep this log if detailed check is needed
+
+          if (dailyCounts.hasOwnProperty(dateString)) {
+            dailyCounts[dateString]++;
+        }
+      } catch (error) {
+        console.error("generateDailyTicketCounts: Error processing ticket date:", ticket.id, error);
+      }
+    });
+
+    // Debug log for final counts
+    console.log("generateDailyTicketCounts: Final daily counts:", dailyCounts);
+
+    // Convert to array format for recharts, sorted by date
+    const chartData = Object.entries(dailyCounts)
+      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .map(([date, count]) => ({
+      date: date,
+        count: count
+    }));
+
+    console.log("generateDailyTicketCounts: Final chart data array:", chartData);
+
+    return chartData;
+  };
+
+  // Generate Issue Overview data from actual tickets
+  const issueOverviewData = generateDailyTicketCounts(tickets, 7); // Get data for the last 7 days
+
+  console.log("AdminDashboard: Data being passed to IssueOverviewChart:", issueOverviewData);
+
+  // Priority distribution data (adapting for Issue Breakdown visual)
+  const issueBreakdownData = [
+    { name: 'Network', value: networkIssues, color: '#60A5FA' }, // Blue
+    { name: 'Software', value: softwareIssues, color: '#C084FC' }, // Purple
+    { name: 'Hardware', value: hardwareIssues, color: '#F59E0B' }, // Amber
+    { name: 'Other', value: otherIssues, color: '#2DD4BF' }, // Teal
   ];
 
-  // Priority distribution data
-  const priorityData = [
-    { name: 'High', value: highPriorityTickets, color: '#EF4444' },
-    { name: 'Medium', value: mediumPriorityTickets, color: '#F59E0B' },
-    { name: 'Low', value: lowPriorityTickets, color: '#10B981' }
-  ];
+  // Example Resolvers data (Placeholder)
+  // Modify this to use actual data from tickets and usersList
+  const resolversData = useMemo(() => {
+    const resolverStats = usersList.reduce((acc, user) => {
+      // Initialize stats for each user
+      acc[user.id] = {
+        id: user.id,
+        name: user.displayName || user.email || 'Unknown User', // Use display name or email
+        empId: user.empId || 'N/A', // Assuming empId might be on user object
+        total: 0,
+        open: 0, // Add count for open tickets assigned
+        inProgress: 0, // Add count for in-progress tickets assigned
+        resolved: 0, // Add count for resolved tickets assigned
+        // Add counts by issue type if needed, similar to issue breakdown
+      };
+      return acc;
+    }, {});
+
+    // Iterate through tickets and update resolver stats
+    tickets.forEach(ticket => {
+      if (ticket.assignedTo) {
+        // Find the resolver in the usersList by name or other identifier
+        const assignedResolver = usersList.find(user => user.displayName === ticket.assignedTo || user.email === ticket.assignedTo);
+        if (assignedResolver && resolverStats[assignedResolver.id]) {
+          resolverStats[assignedResolver.id].total++;
+          if (ticket.status === 'open') resolverStats[assignedResolver.id].open++;
+          if (ticket.status === 'in-progress') resolverStats[assignedResolver.id].inProgress++;
+          if (ticket.status === 'resolved') resolverStats[assignedResolver.id].resolved++;
+        }
+      }
+    });
+
+    // Convert stats object to array and sort if needed
+    return Object.values(resolverStats).sort((a, b) => b.total - a.total); // Sort by total assigned tickets
+
+  }, [tickets, usersList]); // Re-calculate when tickets or usersList change
 
   return (
     <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
@@ -426,82 +584,187 @@ function Dashboard({ tickets }) {
 
       {/* Top stats cards - Responsive Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex items-center shadow-md">
-          <div className="bg-purple-500 p-3 rounded-lg mr-4">
-            <AlertTriangle size={20} className="text-white" />
-          </div>
-          <div>
-            <span className="text-gray-400 text-sm">Total Tickets</span>
-            <h3 className="text-2xl font-bold text-white">{totalTickets}</h3>
-          </div>
+        {/* Total Issues Card */}
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col items-start justify-center shadow-md min-h-[120px]">
+          <span className="text-gray-400 text-sm mb-2">Total Issues</span>
+          <h3 className="text-4xl font-bold text-white">{totalTickets}</h3>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex items-center shadow-md">
-          <div className="bg-red-500 p-3 rounded-lg mr-4">
-            <AlertTriangle size={20} className="text-white" />
-          </div>
-          <div>
-            <span className="text-gray-400 text-sm">Open Tickets</span>
-            <h3 className="text-2xl font-bold text-white">{openTickets}</h3>
-          </div>
+        {/* Resolved Issues Card */}
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col items-start justify-center shadow-md min-h-[120px]">
+          <span className="text-gray-400 text-sm mb-2">Resolved</span>
+          <h3 className="text-4xl font-bold text-white">{resolvedTickets}</h3>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex items-center shadow-md">
-          <div className="bg-yellow-500 p-3 rounded-lg mr-4">
-            <Clock size={20} className="text-black" />
-          </div>
-          <div>
-            <span className="text-gray-400 text-sm">In Progress</span>
-            <h3 className="text-2xl font-bold text-white">{inProgressTickets}</h3>
-          </div>
+        {/* Unresolved Issues Card */}
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col items-start justify-center shadow-md min-h-[120px]">
+          <span className="text-gray-400 text-sm mb-2">Unresolved</span>
+          <h3 className="text-4xl font-bold text-white">{unresolvedTickets}</h3>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex items-center shadow-md">
-          <div className="bg-green-500 p-3 rounded-lg mr-4">
-            <Check size={20} className="text-white" />
-          </div>
-          <div>
-            <span className="text-gray-400 text-sm">Resolved</span>
-            <h3 className="text-2xl font-bold text-white">{resolvedTickets}</h3>
-          </div>
+        {/* Queue Card */}
+        <div className="bg-red-700/50 rounded-xl p-4 border border-red-600 flex flex-col items-start justify-center shadow-md min-h-[120px]">
+          <span className="text-red-300 text-sm mb-2">Queue</span>
+          <h3 className="text-4xl font-bold text-white">{pendingQueue}</h3>
+          <span className="text-red-300 text-xs mt-1">Current Pending Issues</span>
         </div>
       </div>
 
       {/* Charts row - Responsive Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        {/* Ticket Trends Chart */}
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
-          <h3 className="text-lg font-medium text-white mb-4">Ticket Trends</h3>
-          <div className="h-[300px] sm:h-[400px]">
-            <TicketTrendsChart data={ticketTrend} />
+        {/* Issue Breakdown Chart (formerly Priority Distribution) */}
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md flex flex-col items-center">
+          <h3 className="text-lg font-medium text-white mb-4">Issue Breakdown</h3>
+          <div className="w-full h-[300px] sm:h-[400px] flex items-center justify-center">
+             <PieChart width={400} height={400}>
+              <Pie
+                data={issueBreakdownData}
+                cx={200}
+                cy={200}
+                innerRadius={80}
+                outerRadius={100}
+                fill="#8884d8"
+                paddingAngle={5}
+                dataKey="value"
+              >
+                {issueBreakdownData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+               <text x={200} y={200} textAnchor="middle" dominantBaseline="middle" className="text-4xl font-bold text-white">
+                {totalTickets}
+              </text>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1F2937',
+                  border: '1px solid #374151',
+                  borderRadius: '0.5rem',
+                  color: '#F3F4F6'
+                }}
+                formatter={(value, name) => {
+                  const percentage = ((value / totalTickets) * 100).toFixed(1);
+                  return [`${value} (${percentage}%)`, name];
+                }}
+              />
+            </PieChart>
+          </div>
+           {/* Issue Breakdown Summary (Network, Software, etc.) */}
+          <div className="mt-4 grid grid-cols-2 gap-2 w-full">
+            {issueBreakdownData.map((entry, index) => (
+               <div key={index} className={`bg-gray-700/30 rounded-lg p-2 text-center border border-gray-600/50`}>
+                <div className="text-gray-300 font-medium">{entry.value}</div>
+                <div className="text-xs text-gray-400">{entry.name}</div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Priority Distribution Chart */}
+        {/* Issue Overview Chart (formerly Ticket Trends) */}
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
-          <h3 className="text-lg font-medium text-white mb-4">Priority Distribution</h3>
+          <h3 className="text-lg font-medium text-white mb-4">Issue Overview</h3>
           <div className="h-[300px] sm:h-[400px]">
-            <PriorityDistribution
-              high={highPriorityTickets}
-              medium={mediumPriorityTickets}
-              low={lowPriorityTickets}
-            />
+            {console.log("IssueOverviewChart: Rendering with data:", issueOverviewData)}
+            <IssueOverviewChart data={issueOverviewData} />
           </div>
-          {/* Add priority distribution summary */}
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="bg-red-500/20 rounded-lg p-2 text-center">
-              <div className="text-red-400 font-medium">{highPriorityTickets}</div>
-              <div className="text-xs text-gray-400">High</div>
-            </div>
-            <div className="bg-yellow-500/20 rounded-lg p-2 text-center">
-              <div className="text-yellow-400 font-medium">{mediumPriorityTickets}</div>
-              <div className="text-xs text-gray-400">Medium</div>
-            </div>
-            <div className="bg-green-500/20 rounded-lg p-2 text-center">
-              <div className="text-green-400 font-medium">{lowPriorityTickets}</div>
-              <div className="text-xs text-gray-400">Low</div>
-            </div>
-          </div>
+        </div>
+      </div>
+
+      {/* Resolvers Overview Section */}
+      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
+        <h3 className="text-lg font-medium text-white mb-4">Resolvers Overview</h3>
+        {/* Content for Resolvers Overview will go here */}
+        <div className="space-y-3 text-gray-300">
+          {resolversData.length === 0 ? (
+            <div className="text-gray-400 text-sm text-center">No resolvers found or no tickets assigned.</div>
+          ) : (
+            resolversData.map(resolver => (
+              <div key={resolver.id} className="flex items-center justify-between bg-gray-900 p-3 rounded-lg border border-gray-700">
+                <div className="flex items-center">
+                  <div className="text-purple-400 font-medium mr-3">{resolver.name}</div>
+                  {resolver.empId !== 'N/A' && <div className="text-xs text-gray-500">{resolver.empId}</div>}
+                </div>
+                <div className="flex items-center space-x-4 text-sm">
+                  <span className="text-white font-bold">{resolver.total}</span>
+                  <span className="text-gray-400">Total</span>
+                   {/* Display counts for open, in-progress, resolved */}
+                   <span className="text-red-400">Open: {resolver.open}</span>
+                   <span className="text-yellow-400">In Prog: {resolver.inProgress}</span>
+                   <span className="text-green-400">Resolved: {resolver.resolved}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+       {/* Queue Section */}
+       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
+         <h3 className="text-lg font-medium text-white mb-4">Queue</h3>
+         <div className="space-y-3">
+            {tickets.filter(t => t.status === 'open' || t.status === 'in-progress').slice(0, 5).map((ticket, index) => (
+              <div key={ticket.id} className="flex items-center justify-between bg-gray-900 p-3 rounded-lg border border-gray-700">
+                <div className="flex items-center space-x-2">
+                   {/* Display System Type */}
+                   <span className="text-xs px-2 py-1 rounded font-medium bg-purple-600 text-white">{ticket.type?.charAt(0).toUpperCase() + ticket.type?.slice(1).toLowerCase() || 'Issue'}</span>
+                   {/* Display Floor */}
+                   <span className="text-xs px-2 py-1 rounded font-medium bg-gray-700 text-gray-300">{ticket.floor || 'Floor N/A'}</span>
+                   {/* Display Device/System ID */}
+                   <span className="text-xs px-2 py-1 rounded font-medium bg-blue-600 text-white">{ticket.deviceId || ticket.systemId || 'ID N/A'}</span>
+                </div>
+                 <div className="flex items-center space-x-3">
+                   {/* Removed placeholder numerical badges and Get button for now */}
+                    <div className="flex items-center text-gray-400 text-xs">
+                       <Clock size={14} className="mr-1"/>
+                       {/* Display Time in Queue (using creation time for now) */}
+                       <span>
+                         {ticket.createdAt 
+                           ? ((typeof ticket.createdAt.toDate === 'function' ? ticket.createdAt.toDate() : new Date(ticket.createdAt)))?.toISOString() || 'N/A'
+                           : 'N/A'}
+                       </span>
+                    </div>
+                 </div>
+              </div>
+            ))}
+            {tickets.filter(t => t.status === 'open' || t.status === 'in-progress').length === 0 && (
+              <div className="text-gray-400 text-sm text-center">No pending issues in the queue.</div>
+            )}
+         </div>
+       </div>
+
+      {/* Recently Resolved Section */}
+      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
+        <h3 className="text-lg font-medium text-white mb-4">Recently Resolved</h3>
+        <div className="space-y-3">
+          {/* Content for Recently Resolved will go here */}
+          {tickets.filter(t => t.status === 'resolved').slice(0, 5).map((ticket, index) => (
+             <div key={index} className="flex items-center justify-between bg-gray-900 p-3 rounded-lg border border-gray-700">
+               <div className="flex items-center space-x-2">
+                  {/* Display System Type or Placeholder */}
+                  <span className="text-xs px-2 py-1 rounded font-medium bg-purple-600 text-white">{ticket.type?.charAt(0).toUpperCase() + ticket.type?.slice(1).toLowerCase() || 'N/A'}</span>
+                  {/* Display Floor or Placeholder */}
+                  <span className="text-xs px-2 py-1 rounded font-medium bg-gray-700 text-gray-300">{ticket.floor || 'N/A'}</span>
+                  {/* Display Device/System ID or Placeholder */}
+                  <span className="text-xs px-2 py-1 rounded font-medium bg-blue-600 text-white">{ticket.deviceId || ticket.systemId || 'N/A'}</span>
+               </div>
+                <div className="flex items-center space-x-3">
+                  {/* Removed placeholder numerical badges */}
+                   <div className="flex items-center text-gray-400 text-xs">
+                      <Clock size={14} className="mr-1"/>
+                      {/* Display Resolved At date and time (as ISO string) */}
+                      <span>
+                        {ticket.resolvedAt 
+                          ? (typeof ticket.resolvedAt.toDate === 'function' ? ticket.resolvedAt.toDate() : new Date(ticket.resolvedAt))?.toISOString() || 'N/A'
+                          : ticket.updatedAt 
+                            ? (typeof ticket.updatedAt.toDate === 'function' ? ticket.updatedAt.toDate() : new Date(ticket.updatedAt))?.toISOString() || 'N/A'
+                            : 'N/A'}
+                      </span>
+                   </div>
+                </div>
+             </div>
+           ))}
+           {tickets.filter(t => t.status === 'resolved').length === 0 && (
+              <div className="text-gray-400 text-sm text-center">No recently resolved issues.</div>
+           )}
         </div>
       </div>
 
@@ -547,7 +810,8 @@ function Dashboard({ tickets }) {
           {tickets.slice(0, 5).map((ticket, index) => (
             <div key={index} className="flex items-start bg-gray-900 p-3 rounded-lg">
               <div className={`mt-1 rounded-full w-3 h-3 flex-shrink-0 ${ticket.status === 'open' ? 'bg-red-500' :
-                  ticket.status === 'in-progress' ? 'bg-yellow-500' : 'bg-green-500'
+                  ticket.status === 'in-progress' ? 'bg-yellow-500' :
+                    'bg-green-500'
                 }`}></div>
               <div className="ml-3 flex-1 min-w-0">
                 <p className="text-xs text-gray-400">
@@ -648,7 +912,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                 {ticket.deviceId || ticket.systemId || 'Unknown Device'}
               </h3>
               <p className="text-sm text-gray-400">
-                Floor: {ticket.floor || 'Unknown'} · Created: {new Date(ticket.createdAt).toLocaleDateString()}
+                Floor: {ticket.floor || 'Unknown'} · Created: {ticket.createdAt ? (typeof ticket.createdAt.toDate === 'function' ? ticket.createdAt.toDate() : new Date(ticket.createdAt)).toLocaleString() : 'N/A'}
               </p>
             </div>
           </div>
@@ -747,7 +1011,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                   <div className="mt-1 bg-purple-500 rounded-full w-3 h-3 flex-shrink-0"></div>
                   <div className="ml-3">
                     <p className="text-xs text-gray-400">
-                      {new Date(ticket.createdAt).toLocaleString()}
+                      {ticket.createdAt ? (typeof ticket.createdAt.toDate === 'function' ? ticket.createdAt.toDate() : new Date(ticket.createdAt)).toLocaleString() : 'N/A'}
                     </p>
                     <p className="text-sm text-gray-200">Ticket created</p>
                   </div>
@@ -757,7 +1021,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                     <div className="mt-1 bg-purple-500 rounded-full w-3 h-3 flex-shrink-0"></div>
                     <div className="ml-3">
                       <p className="text-xs text-gray-400">
-                        {new Date(ticket.updatedAt || ticket.createdAt).toLocaleString()}
+                        {ticket.updatedAt ? (typeof ticket.updatedAt.toDate === 'function' ? ticket.updatedAt.toDate() : new Date(ticket.updatedAt)).toLocaleString() : 'N/A'}
                       </p>
                       <p className="text-sm text-gray-200">Assigned to {ticket.assignedTo}</p>
                     </div>
@@ -768,7 +1032,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                     <div className="mt-1 bg-purple-500 rounded-full w-3 h-3 flex-shrink-0"></div>
                     <div className="ml-3">
                       <p className="text-xs text-gray-400">
-                        {new Date(ticket.resolvedAt || ticket.updatedAt || ticket.createdAt).toLocaleString()}
+                        {ticket.resolvedAt ? (typeof ticket.resolvedAt.toDate === 'function' ? ticket.resolvedAt.toDate() : new Date(ticket.resolvedAt)).toLocaleString() : 'N/A'}
                       </p>
                       <p className="text-sm text-gray-200">Ticket resolved</p>
                     </div>
@@ -787,8 +1051,28 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
 export default function AdminDashboard({ user, onLogout }) {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Add state for selected building
+  // Changed default building name from 'Town Square' to 'Building 1'
+  const [selectedBuilding, setSelectedBuilding] = useState('Building 1'); // Default building
+
+  // Add check for user authentication
+  useEffect(() => {
+    if (!user) {
+      console.error('No user object provided to AdminDashboard');
+      // You might want to redirect to login here
+      return;
+    }
+  }, [user]);
+
+  // Calculate summary statistics from the tickets state
+  const totalTicketsCount = tickets.length;
+  const resolvedTicketsCount = tickets.filter(t => t.status === 'resolved').length;
+  const openTicketsCount = tickets.filter(t => t.status === 'open').length;
+  const unresolvedTicketsCount = tickets.filter(t => t.status === 'open' || t.status === 'in-progress').length; // Unresolved = Open + In Progress (for dashboard summary card)
+
   const [currentFloor, setCurrentFloor] = useState('S1');
-  const [activeTab, setActiveTab] = useState('map');
+  const [activeTab, setActiveTab] = useState('tickets'); // Changed default tab to 'tickets'
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [layoutConfig, setLayoutConfig] = useState({
@@ -810,14 +1094,6 @@ export default function AdminDashboard({ user, onLogout }) {
       conferenceRows: 1,
       meetingRows: 2,
       tlRows: 1,
-      spaceTypes: {
-        WORKSTATION: { prefix: 'WS', color: '#e3f2fd', borderColor: '#1976d2', range: 'WS001-WS412', total: 412 },
-        MEETING_ROOM: { prefix: 'MR', color: '#f3e5f5', borderColor: '#7b1fa2', range: 'MR01-MR11', total: 11 },
-        MD_CABIN: { prefix: 'CB', color: '#fff3e0', borderColor: '#f57c00', range: 'CB01-CB06', total: 6 },
-        TECHNICAL_WS: { prefix: 'TWS', color: '#e8f5e8', borderColor: '#388e3c', range: 'TWS01-TWS26', total: 26 },
-        CONFERENCE: { prefix: 'CO', color: '#ffebee', borderColor: '#d32f2f', range: 'CO01-CO02', total: 2 },
-        TEAM_LEAD: { prefix: 'TL', color: '#f1f8e9', borderColor: '#689f38', range: 'TL01', total: 1 },
-      }
     }
   });
   const [floors, setFloors] = useState(['S1']);
@@ -831,46 +1107,87 @@ export default function AdminDashboard({ user, onLogout }) {
   const currentFloorConfig = layoutConfig[currentFloor] || layoutConfig['S1'];
   const officeLayout = useOfficeLayout(currentFloorConfig);
 
-  // Fetch all tickets for admin
+  // Update the useEffect for fetching tickets to use real-time updates
   useEffect(() => {
     const fetchTickets = async () => {
       setLoading(true);
       try {
-        const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
-        const querySnapshot = await getDocs(q);
-        const ticketsData = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          const createdAt = data.createdAt ? data.createdAt.toDate().toLocaleString() : new Date().toLocaleString();
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: createdAt
-          };
+        // Create a query for tickets
+        const q = query(
+          collection(db, "tickets"),
+          orderBy("createdAt", "desc")
+        );
+
+        // Set up real-time listener
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+          const ticketsData = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            // Convert Firestore Timestamps to JavaScript Date objects
+            const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt instanceof Date ? data.createdAt : (typeof data.createdAt === 'string' ? new Date(data.createdAt) : null));
+            const updatedAtDate = data.updatedAt?.toDate ? data.updatedAt.toDate() : (data.updatedAt instanceof Date ? data.updatedAt : (typeof data.updatedAt === 'string' ? new Date(data.updatedAt) : null));
+            const resolvedAtDate = data.resolvedAt?.toDate ? data.resolvedAt.toDate() : (data.resolvedAt instanceof Date ? data.resolvedAt : (typeof data.resolvedAt === 'string' ? new Date(data.resolvedAt) : null));
+
+            return {
+              id: doc.id,
+              ...data,
+              createdAt: createdAtDate,
+              updatedAt: updatedAtDate,
+              resolvedAt: resolvedAtDate,
+              floor: data.floor || 'N/A'
+            };
+          });
+          console.log("AdminDashboard: Real-time tickets update received:", ticketsData);
+          setTickets(ticketsData);
+          setLoading(false);
+        }, (error) => {
+          console.error("AdminDashboard: Error in real-time tickets listener:", error);
+          setLoading(false);
         });
-        setTickets(ticketsData);
+
+        // Cleanup subscription on unmount
+        return () => unsubscribe();
       } catch (err) {
-        console.error("Error fetching tickets:", err);
-        setTickets([]);
-      } finally {
+        console.error("AdminDashboard: Error setting up tickets listener:", err);
         setLoading(false);
       }
     };
+
     fetchTickets();
-  }, []);
+  }, [selectedBuilding]); // Re-run when building changes
 
   // Add this to AdminDashboard component
   const refreshTickets = async () => {
     try {
-      const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
+      // Modify refresh to filter by selected building
+      const q = query(
+        collection(db, "tickets"),
+        // where("building", "==", selectedBuilding), // Filter by selected building
+        orderBy("createdAt", "desc")
+      );
       const querySnapshot = await getDocs(q);
-      const ticketsData = querySnapshot.docs.map(doc => ({
+      const ticketsData = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        // Convert Firestore Timestamps to JavaScript Date objects
+        const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt instanceof Date ? data.createdAt : (typeof data.createdAt === 'string' ? new Date(data.createdAt) : null));
+        const updatedAtDate = data.updatedAt?.toDate ? data.updatedAt.toDate() : (data.updatedAt instanceof Date ? data.updatedAt : (typeof data.updatedAt === 'string' ? new Date(data.updatedAt) : null));
+        const resolvedAtDate = data.resolvedAt?.toDate ? data.resolvedAt.toDate() : (data.resolvedAt instanceof Date ? data.resolvedAt : (typeof data.resolvedAt === 'string' ? new Date(data.resolvedAt) : null));
+
+        return {
         id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate().toLocaleString() || new Date().toLocaleString()
-      }));
+          ...data,
+          createdAt: createdAtDate, // Store as Date object
+          updatedAt: updatedAtDate, // Store as Date object
+          resolvedAt: resolvedAtDate, // Store as Date object
+           // Ensure floor is present for logging
+          floor: data.floor || 'N/A'
+        };
+      });
+      console.log("AdminDashboard: Refreshed tickets successfully (dates as Date objects).", ticketsData);
       setTickets(ticketsData);
     } catch (err) {
-      console.error("Error refreshing tickets:", err);
+      console.error("AdminDashboard: Error refreshing tickets:", err);
+    } finally {
+      console.log("AdminDashboard: currentFloor state:", currentFloor);
     }
   };
 
@@ -880,25 +1197,66 @@ export default function AdminDashboard({ user, onLogout }) {
       refreshTickets();
     }, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedBuilding, currentFloor]); // Also re-run interval if currentFloor changes
+
+  // State for users (potential resolvers)
+  const [usersList, setUsersList] = useState([]);
+
+  // Fetch users from Firestore
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const usersCollectionRef = collection(db, "users");
+        // You might want to add a filter here if only specific users are resolvers (e.g., where("role", "==", "resolver"))
+        const usersSnapshot = await getDocs(usersCollectionRef);
+        const usersData = usersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        console.log("AdminDashboard: Fetched users successfully.", usersData);
+        setUsersList(usersData);
+      } catch (error) {
+        console.error("AdminDashboard: Error fetching users:", error);
+      }
+    };
+
+    fetchUsers();
+  }, []); // Fetch users only once on mount
 
   // Function to update ticket status
   const updateTicketStatus = async (ticketId, newStatus) => {
     try {
       // Update in Firestore
       const ticketRef = doc(db, "tickets", ticketId);
-      await updateDoc(ticketRef, {
+      const updateData = {
         status: newStatus,
         updatedAt: new Date()
-      });
+      };
+
+      // Add resolvedAt timestamp when status is changed to resolved
+      if (newStatus === 'resolved') {
+        updateData.resolvedAt = new Date();
+      }
+
+      await updateDoc(ticketRef, updateData);
 
       // Update local state
       setTickets(tickets.map(ticket =>
-        ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket
+        ticket.id === ticketId ? { 
+          ...ticket, 
+          status: newStatus,
+          updatedAt: new Date(),
+          resolvedAt: newStatus === 'resolved' ? new Date() : ticket.resolvedAt
+        } : ticket
       ));
 
       if (selectedTicket && selectedTicket.id === ticketId) {
-        setSelectedTicket({ ...selectedTicket, status: newStatus });
+        setSelectedTicket({ 
+          ...selectedTicket, 
+          status: newStatus,
+          updatedAt: new Date(),
+          resolvedAt: newStatus === 'resolved' ? new Date() : selectedTicket.resolvedAt
+        });
       }
     } catch (error) {
       console.error("Error updating ticket status:", error);
@@ -906,19 +1264,35 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   // Function to assign ticket to staff
-  const assignTicket = (ticketId, staffName) => {
+  const assignTicket = async (ticketId, staffName) => {
+    try {
+      // Update in Firestore
+      const ticketRef = doc(db, "tickets", ticketId);
+      await updateDoc(ticketRef, {
+        assignedTo: staffName,
+        status: 'in-progress', // Set status to in-progress on assignment
+        updatedAt: new Date()
+      });
+
+      // Update local state
     setTickets(tickets.map(ticket =>
-      ticket.id === ticketId ? { ...ticket, assignedTo: staffName, status: 'in-progress' } : ticket
+        ticket.id === ticketId ? { ...ticket, assignedTo: staffName, status: 'in-progress', updatedAt: new Date() } : ticket
     ));
     if (selectedTicket && selectedTicket.id === ticketId) {
-      setSelectedTicket({ ...selectedTicket, assignedTo: staffName, status: 'in-progress' });
+        setSelectedTicket({ ...selectedTicket, assignedTo: staffName, status: 'in-progress', updatedAt: new Date() });
+      }
+    } catch (error) {
+      console.error("Error assigning ticket:", error);
     }
   };
 
   // Handle tab change (also close sidebar on mobile)
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+    // Close sidebar on mobile when changing tabs
+    if (window.innerWidth < 768) {
     setSidebarOpen(false);
+    }
   };
 
   // Handle ticket selection (close sidebar on mobile when selecting ticket)
@@ -1141,6 +1515,103 @@ export default function AdminDashboard({ user, onLogout }) {
     fetchFloors();
   }, []);
 
+  // Define mapping between buildings and floors
+  const buildingFloorMap = {
+    'Building 1': ['S1', 'S2'],
+    'Building 2': ['F1', 'F2', 'F3'],
+    'Building 3': ['G1'],
+    // Removed Building 4 and 5
+  };
+
+  // State for floors available based on selected building
+  const [availableFloors, setAvailableFloors] = useState(buildingFloorMap[selectedBuilding] || []);
+
+  // Update available floors and current floor when building changes
+  useEffect(() => {
+    const floorsForBuilding = buildingFloorMap[selectedBuilding] || [];
+    setAvailableFloors(floorsForBuilding);
+    // Set current floor to the first available floor for the selected building
+    if (floorsForBuilding.length > 0) {
+      setCurrentFloor(floorsForBuilding[0]);
+    } else {
+      setCurrentFloor(''); // Or handle case with no floors
+    }
+  }, [selectedBuilding]);
+
+  // Add this state for upload status
+  const [uploadStatus, setUploadStatus] = useState({ loading: false, error: null, success: false });
+
+  // Update the handlePhotoUpload function
+  const handlePhotoUpload = async (file) => {
+    if (!file) {
+      console.error('No file provided for upload');
+      throw new Error('No file provided for upload');
+    }
+
+    // Check if user exists and has uid
+    if (!user || !user.uid) {
+      console.error('User not authenticated');
+      throw new Error('User not authenticated. Please log in again.');
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      console.error('Invalid file type. Please upload an image.');
+      throw new Error('Invalid file type. Please upload an image.');
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      console.error('File too large. Maximum size is 5MB.');
+      throw new Error('File too large. Maximum size is 5MB.');
+    }
+
+    try {
+      console.log('Starting file upload...');
+      const storageRef = ref(storage, `profile_photos/${user.uid}/${file.name}`);
+      const uploadResult = await uploadBytes(storageRef, file);
+      console.log('File uploaded successfully:', uploadResult);
+
+      // Get the download URL
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+      console.log('Download URL received:', downloadURL);
+
+      // Update user document in Firestore
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        photoURL: downloadURL,
+        updatedAt: serverTimestamp()
+      });
+      console.log('User document updated with new photo URL');
+
+      // Verify the URL is accessible
+      try {
+        const response = await fetch(downloadURL, { method: 'HEAD' });
+        if (!response.ok) {
+          console.error('Photo URL is not accessible:', response.status);
+          throw new Error('Photo URL is not accessible');
+        }
+        console.log('Photo URL is accessible');
+      } catch (error) {
+        console.error('Error verifying photo URL:', error);
+        throw new Error('Failed to verify photo URL accessibility');
+      }
+
+      return downloadURL;
+    } catch (error) {
+      console.error('Error in handlePhotoUpload:', error);
+      throw error;
+    }
+  };
+
+  // Function to handle building selection
+  const handleBuildingSelect = (building) => {
+    setSelectedBuilding(building);
+    console.log('Selected Building:', building);
+    // Re-fetch tickets or filter existing tickets based on the new building
+    // For now, we'll rely on the useEffect for fetching which includes the building filter.
+  };
+
   // Modify the FloorView section in the return statement
   // Find this part in your existing code:
   {
@@ -1158,27 +1629,7 @@ export default function AdminDashboard({ user, onLogout }) {
   // Replace it with:
   {
     activeTab === 'map' && (
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <select
-              value={currentFloor}
-              onChange={(e) => setCurrentFloor(e.target.value)}
-              className="w-full sm:w-auto bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-            >
-              {floors.map(floor => (
-                <option key={floor} value={floor}>{floor}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => setShowCreateFloor(true)}
-              className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-            >
-              <Plus size={16} />
-              <span>Create Floor</span>
-            </button>
-          </div>
-        </div>
+      <div className="relative flex-1">
         <FloorView
           tickets={tickets}
           officeLayout={officeLayout}
@@ -1198,6 +1649,33 @@ export default function AdminDashboard({ user, onLogout }) {
       </div>
     );
   }
+
+  // Add authentication check
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-900">
+        <div className="text-red-500">Please log in to access the admin dashboard.</div>
+      </div>
+    );
+  }
+
+  // Filter tickets by selected building for header counts and views
+  console.log("AdminDashboard: Selected Building for filtering:", selectedBuilding);
+  console.log("AdminDashboard: First 5 tickets before filtering:", tickets.slice(0, 5).map(t => ({ id: t.id, building: t.building, floor: t.floor })));
+
+  // Filter tickets for the currently selected floor for dashboard and header counts
+  const ticketsForCurrentFloor = tickets.filter(ticket => {
+    // If currentFloor is empty (e.g., no floors for selected building), show no tickets
+    if (!currentFloor) return false;
+    return ticket.floor === currentFloor;
+  });
+
+  console.log("AdminDashboard: Tickets filtered for current floor (", currentFloor, "):", ticketsForCurrentFloor);
+
+  // Calculate summary statistics for the currently selected floor
+  const totalIssuesForDisplay = ticketsForCurrentFloor.length;
+  const resolvedIssuesForDisplay = ticketsForCurrentFloor.filter(t => t.status === 'resolved').length;
+  const openIssuesForDisplay = ticketsForCurrentFloor.filter(t => t.status === 'open').length;
 
   // Update the main container div and add the SVG background component properly
   return (
@@ -1254,37 +1732,45 @@ export default function AdminDashboard({ user, onLogout }) {
           user={user}
           onLogout={onLogout}
           toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          totalIssues={totalIssuesForDisplay}
+          resolvedIssues={resolvedIssuesForDisplay}
+          openIssues={openIssuesForDisplay}
+          onPhotoUpload={handlePhotoUpload} // Pass the photo upload function as a prop
+          selectedBuilding={selectedBuilding} // Pass selected building state
+          onBuildingSelect={handleBuildingSelect} // Pass building selection handler
         />
+        {/* Conditional Overlay for mobile sidebar */}
+        {sidebarOpen && ( // Only show overlay if sidebar is open
+           <div
+             className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden" // Hide overlay on medium screens and up
+             onClick={() => setSidebarOpen(false)}
+           ></div>
+        )}
         <div className="flex flex-1 relative">
           <Sidebar
             activeTab={activeTab}
             setActiveTab={handleTabChange}
             isOpen={sidebarOpen}
             closeSidebar={() => setSidebarOpen(false)}
+            tickets={tickets}
           />
-          <main className="flex-1 p-2 sm:p-4 md:p-6 overflow-auto">
+          {/* Main content area - Adjust for sidebar on mobile and desktop */}
+          <main className={`flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'md:ml-64'}`}> {/* Adjusted margin for open sidebar */}
+            {/* Render content based on activeTab */}
+            {activeTab === 'tickets' && (
+              <ReportsView
+                tickets={tickets}
+                setSelectedTicket={handleTicketSelect}
+              />
+            )}
+            {activeTab === 'dashboard' && (
+              <Dashboard
+                tickets={tickets}
+                usersList={usersList}
+              />
+            )}
             {activeTab === 'map' && (
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                    <select
-                      value={currentFloor}
-                      onChange={(e) => setCurrentFloor(e.target.value)}
-                      className="w-full sm:w-auto bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
-                    >
-                      {floors.map(floor => (
-                        <option key={floor} value={floor}>{floor}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => setShowCreateFloor(true)}
-                      className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-                    >
-                      <Plus size={16} />
-                      <span>Create Floor</span>
-                    </button>
-                  </div>
-                </div>
+              <div className="relative flex-1">
                 <FloorView
                   tickets={tickets}
                   officeLayout={officeLayout}
@@ -1296,13 +1782,6 @@ export default function AdminDashboard({ user, onLogout }) {
                 {showCreateFloor && <CreateFloorModal />}
               </div>
             )}
-            {activeTab === 'tickets' && (
-              <TicketList
-                tickets={tickets}
-                setSelectedTicket={handleTicketSelect}
-              />
-            )}
-            {activeTab === 'dashboard' && <Dashboard tickets={tickets} />}
           </main>
           {selectedTicket && (
             <TicketDetail
@@ -1310,7 +1789,7 @@ export default function AdminDashboard({ user, onLogout }) {
               onClose={() => setSelectedTicket(null)}
               updateStatus={updateTicketStatus}
               assignTicket={assignTicket}
-              isMobile={window.innerWidth < 768}
+              isMobile={window.innerWidth < 768} // Adjust for responsiveness
             />
           )}
         </div>
@@ -1319,151 +1798,231 @@ export default function AdminDashboard({ user, onLogout }) {
   );
 }
 
-// Header Component - Updated with better mobile responsiveness
-function Header({ user, onLogout, toggleSidebar }) {
+// Header Component - Updated without photo upload functionality
+function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, openIssues, onPhotoUpload, selectedBuilding, onBuildingSelect }) {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [isTownSquareDropdownOpen, setIsTownSquareDropdownOpen] = useState(false);
+
+  const handleDateChange = (date) => {
+    setSelectedDate(date);
+    setIsCalendarOpen(false);
+  };
+
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  const toggleCalendar = () => {
+    setIsCalendarOpen(!isCalendarOpen);
+  };
+
+  const toggleTownSquareDropdown = () => {
+    setIsTownSquareDropdownOpen(!isTownSquareDropdownOpen);
+  };
+
+  const handleBuildingSelect = (building) => {
+    onBuildingSelect(building);
+    setIsTownSquareDropdownOpen(false);
+  };
+
   return (
-    <header className="bg-gradient-to-r from-gray-900 to-gray-800 text-gray-100 p-2 sm:p-4 shadow-lg border-b border-gray-700">
-      <div className="max-w-7xl mx-auto flex justify-between items-center">
-        <div className="flex items-center">
-          <button
-            onClick={toggleSidebar}
-            className="mr-2 p-1 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 md:hidden"
-          >
-            <Menu size={24} />
-          </button>
-          <div className="bg-purple-500 text-white w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center font-bold text-xl mr-2 sm:mr-3">
-            IT
-          </div>
-          <h1 className="text-lg sm:text-xl md:text-2xl font-bold truncate">IT Support Admin</h1>
+    <header className="bg-gradient-to-r from-gray-900 via-purple-900 to-gray-900 p-4 shadow-lg">
+      <div className="container mx-auto">
+        <div className="flex flex-wrap items-center justify-between">
+          {/* Left section with menu button and building selector */}
+          <div className="flex items-center space-x-4">
+        <button
+          onClick={toggleSidebar}
+              className="md:hidden text-white hover:text-gray-300 focus:outline-none"
+        >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+        </button>
+
+            {/* Building selector dropdown */}
+            <div className="relative">
+              <button
+                onClick={toggleTownSquareDropdown}
+                className="flex items-center space-x-2 text-white hover:text-gray-300 focus:outline-none"
+              >
+                <span className="font-medium">{selectedBuilding}</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {isTownSquareDropdownOpen && (
+                <div className="absolute left-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                  <div className="py-1" role="menu" aria-orientation="vertical">
+                    <button
+                      onClick={() => handleBuildingSelect('Building 1')}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Building 1
+                    </button>
+                    <button
+                      onClick={() => handleBuildingSelect('Building 2')}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Building 2
+                    </button>
+                    <button
+                      onClick={() => handleBuildingSelect('Building 3')}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Building 3
+                    </button>
         </div>
-        <div className="flex items-center space-x-2 sm:space-x-4">
-          <div className="hidden sm:flex items-center bg-gray-800 px-2 sm:px-4 py-1 sm:py-2 rounded-lg shadow-sm border border-gray-700">
-            <Clock size={16} className="mr-1 sm:mr-2 text-purple-400" />
-            <span className="text-xs sm:text-sm">{new Date().toLocaleDateString()}</span>
+      </div>
+              )}
+        </div>
           </div>
-          {user && (
-            <div className="bg-purple-600 text-white px-2 sm:px-4 py-1 sm:py-2 rounded-lg shadow-sm hidden sm:flex items-center">
-              <Users size={16} className="mr-1 sm:mr-2" />
-              <span className="font-medium text-xs sm:text-sm truncate max-w-24 md:max-w-full">{user.email}</span>
+
+          {/* Right section with calendar, profile, and stats */}
+          <div className="flex items-center space-x-6">
+            {/* Calendar button */}
+            <div className="relative">
+              <button
+                onClick={toggleCalendar}
+                className="text-white hover:text-gray-300 focus:outline-none"
+              >
+                <Calendar className="w-6 h-6" />
+              </button>
+
+              {isCalendarOpen && (
+                <div className="absolute right-0 mt-2 p-4 bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 rounded-lg shadow-xl z-50 border border-purple-500/20 backdrop-blur-sm">
+                  <ReactCalendar
+                    onChange={handleDateChange}
+                    value={selectedDate}
+                    className="react-calendar-custom !bg-transparent !border-none"
+                    tileClassName="!text-white hover:!bg-purple-500/20"
+                    navigationLabel={({ date }) => (
+                      <span className="text-white font-semibold">
+                        {date.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                      </span>
+                    )}
+                    prevLabel={<span className="text-white">◀</span>}
+                    nextLabel={<span className="text-white">▶</span>}
+                  />
+                </div>
+              )}
             </div>
-          )}
-          {onLogout && (
-            <button
-              onClick={onLogout}
-              className="bg-red-600 px-2 sm:px-3 py-1 rounded hover:bg-red-700 text-white text-xs sm:text-sm"
-            >
-              Logout
-            </button>
-          )}
+
+            {/* Stats */}
+            <div className="flex items-center space-x-4 sm:space-x-6">
+              <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
+                <div className="text-xl sm:text-2xl font-bold text-white">{totalIssues}</div>
+                <div className="text-xs sm:text-sm text-gray-300">Total</div>
+              </div>
+              <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
+                <div className="text-xl sm:text-2xl font-bold text-green-400">{resolvedIssues}</div>
+                <div className="text-xs sm:text-sm text-gray-300">Resolved</div>
+              </div>
+              <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
+                <div className="text-xl sm:text-2xl font-bold text-red-400">{openIssues}</div>
+                <div className="text-xs sm:text-sm text-gray-300">Open</div>
+              </div>
+            </div>
+
+            {/* Profile section */}
+            <div className="relative">
+              <button
+                onClick={toggleDropdown}
+                className="flex items-center space-x-3 focus:outline-none"
+              >
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden">
+                    {user?.photoURL ? (
+                      <img
+                        src={user.photoURL}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          onPhotoUpload(file);
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                  </div>
+                </div>
+                <span className="text-white">{user?.name || 'Admin'}</span>
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                  <div className="py-1" role="menu" aria-orientation="vertical">
+                    <div className="px-4 py-2 text-sm text-gray-700">
+                      <div className="font-medium">{user?.name || 'Admin'}</div>
+                      <div className="text-gray-500">{user?.department || 'IT Department'}</div>
+                      <div className="text-gray-500">{user?.email}</div>
+                    </div>
+                    <div className="border-t border-gray-100"></div>
+          <button
+            onClick={onLogout}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+          >
+            Logout
+          </button>
+                  </div>
+                </div>
+        )}
+            </div>
+          </div>
         </div>
       </div>
     </header>
   );
 }
 
-// Sidebar Component - Updated with Recent Activity navigation
-function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
+// Sidebar Component - Adjusted for desktop visibility and mobile slide-in
+function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar, tickets }) {
   const tabs = [
     { id: 'map', label: 'Floor Map', icon: <Map size={20} /> },
-    { id: 'tickets', label: 'Tickets', icon: <AlertTriangle size={20} /> },
+    { id: 'tickets', label: 'Reports', icon: <AlertTriangle size={20} /> },
     { id: 'dashboard', label: 'Dashboard', icon: <BarChart size={20} /> },
   ];
 
-  // Get real-time ticket data from Firebase
-  const [recentActivities, setRecentActivities] = useState([]);
-
-  useEffect(() => {
-    const fetchRecentActivities = async () => {
-      try {
-        const q = query(
-          collection(db, "tickets"),
-          orderBy("createdAt", "desc"),
-          limit(5)
-        );
-        const querySnapshot = await getDocs(q);
-        const activities = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            type: 'ticket',
-            status: data.status,
-            message: `${data.status === 'open' ? 'New ticket opened' :
-              data.status === 'in-progress' ? 'Ticket assigned to ' + (data.assignedTo || 'staff') :
-                'Ticket resolved'} - ${data.deviceId || data.systemId}`,
-            time: data.createdAt?.toDate().toLocaleString() || new Date().toLocaleString(),
-            issue: data.issue
-          };
-        });
-        setRecentActivities(activities);
-      } catch (error) {
-        console.error("Error fetching recent activities:", error);
-      }
-    };
-
-    // Initial fetch
-    fetchRecentActivities();
-
-    // Set up real-time listener
-    const q = query(
-      collection(db, "tickets"),
-      orderBy("createdAt", "desc"),
-      limit(5)
-    );
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const activities = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          type: 'ticket',
-          status: data.status,
-          message: `${data.status === 'open' ? 'New ticket opened' :
-            data.status === 'in-progress' ? 'Ticket assigned to ' + (data.assignedTo || 'staff') :
-              'Ticket resolved'} - ${data.deviceId || data.systemId}`,
-          time: data.createdAt?.toDate().toLocaleString() || new Date().toLocaleString(),
-          issue: data.issue
-        };
-      });
-      setRecentActivities(activities);
-    });
-
-    // Cleanup subscription
-    return () => unsubscribe();
-  }, []);
-
-  const getActivityIcon = (type, status) => {
-    switch (type) {
-      case 'ticket':
-        return status === 'open' ? <AlertTriangle size={14} className="text-red-400" /> :
-               status === 'in-progress' ? <Clock size={14} className="text-yellow-400" /> :
-               <Check size={14} className="text-green-400" />;
-      case 'system':
-        return <Monitor size={14} className="text-blue-400" />;
-      default:
-        return <Info size={14} className="text-gray-400" />;
-    }
-  };
-
-  const handleViewAllActivity = () => {
-    setActiveTab('dashboard');
-    if (window.innerWidth < 768) {
-      closeSidebar();
-    }
-  };
+  // Calculate active tickets
+  const activeTicketsCount = tickets.filter(ticket => ticket.status === 'open' || ticket.status === 'in-progress').length;
 
   return (
-    <aside className={`bg-gray-900/40 backdrop-blur-xl text-gray-300 shadow-2xl border-r border-gray-700/30 fixed md:relative z-30 top-0 left-0 h-full transition-all duration-300 transform ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} w-72`}>
+    // Adjusted classes: fixed on mobile, relative on md+, controlled translation only on mobile
+    <aside className={`bg-gray-900/40 backdrop-blur-xl text-gray-300 shadow-2xl border-r border-gray-700/30 z-30 top-0 left-0 h-full w-64 transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isOpen ? 'translate-x-0 fixed' : '-translate-x-full fixed md:relative'}`}>
       {/* Mobile Header */}
       <div className="flex justify-between items-center p-4 md:hidden border-b border-gray-700/30 bg-gray-900/30 backdrop-blur-sm">
         <div className="flex items-center space-x-2">
           <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xl shadow-lg shadow-purple-500/20">
             IT
           </div>
-          <h2 className="text-xl font-semibold text-purple-400">Support Control</h2>
+        <h2 className="text-xl font-semibold text-purple-400">Support Control</h2>
         </div>
         <button onClick={closeSidebar} className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700/30 transition-colors">
           <X size={24} />
         </button>
       </div>
 
-      {/* Desktop Header */}
+      {/* Desktop Header - Always visible at the top of the fixed sidebar */}
       <div className="hidden md:flex flex-col items-center p-6 border-b border-gray-700/30 bg-gray-900/30 backdrop-blur-sm">
         <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white w-14 h-14 rounded-xl flex items-center justify-center font-bold text-2xl mb-3 shadow-lg shadow-purple-500/20">
           IT
@@ -1495,8 +2054,7 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
               <li key={tab.id}>
                 <button
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center w-full p-3.5 rounded-xl transition-all duration-200 ${
-                    activeTab === tab.id
+                  className={`flex items-center w-full p-3.5 rounded-xl transition-all duration-200 ${activeTab === tab.id
                       ? 'bg-gradient-to-r from-purple-600/90 to-purple-500/90 text-white shadow-lg shadow-purple-500/20'
                       : 'hover:bg-gray-800/30 text-gray-300'
                   }`}
@@ -1506,6 +2064,7 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
                       className: `transition-transform duration-200 ${activeTab === tab.id ? 'scale-110' : 'scale-100'}`,
                       strokeWidth: activeTab === tab.id ? 2.5 : 2
                     })}
+
                   </span>
                   <span className="font-medium">{tab.label}</span>
                 </button>
@@ -1525,15 +2084,15 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Active Tickets</span>
                 <span className="bg-red-500/20 text-red-400 px-2.5 py-1 rounded-lg text-xs font-medium border border-red-500/20 backdrop-blur-sm">
-                  {recentActivities.filter(activity => activity.status === 'open').length} Active
+                  {tickets.filter(t => t.status === 'open' || t.status === 'in-progress').length} Active
                 </span>
-              </div>
-              <div className="flex items-center justify-between">
+            </div>
+            <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">System Health</span>
                 <span className="flex items-center text-green-400 text-xs font-medium">
                   <span className="w-2 h-2 bg-green-400 rounded-full mr-1.5 animate-pulse shadow-lg shadow-green-400/20"></span>
-                  All Systems
-                </span>
+                All Systems
+              </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Last Update</span>
@@ -1544,444 +2103,507 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar }) {
             </div>
           </div>
         </div>
-
-        {/* Recent Activity */}
-        <div className="mt-6">
-          <h3 className="font-medium text-sm mb-3 text-purple-400 flex items-center">
-            <Clock size={18} className="mr-2 text-purple-400" strokeWidth={2} />
-            Recent Activity
-          </h3>
-          <div className="space-y-2">
-            {recentActivities.length > 0 ? (
-              recentActivities.map((activity, index) => (
-                <div 
-                  key={index}
-                  className="bg-gray-800/30 hover:bg-gray-800/50 p-2.5 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/10 border border-gray-700/30 backdrop-blur-sm"
-                >
-                  <div className="flex items-start space-x-2">
-                    <div className="mt-0.5">
-                      {getActivityIcon(activity.type, activity.status)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-gray-300 truncate">{activity.message}</p>
-                      <p className="text-gray-500 text-[10px] mt-0.5">{activity.time}</p>
-                      {activity.issue && (
-                        <p className="text-gray-400 text-[10px] mt-0.5 truncate">{activity.issue}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="bg-gray-800/30 p-2.5 rounded-lg text-xs text-gray-400 text-center">
-                No recent activity
-              </div>
-            )}
-          </div>
-          <button 
-            onClick={handleViewAllActivity}
-            className="w-full mt-2 text-xs text-purple-400 hover:text-purple-300 transition-colors flex items-center justify-center group"
-          >
-            <span>View All Activity</span>
-            <BarChart size={14} className="ml-1.5 group-hover:translate-x-0.5 transition-transform" />
-          </button>
-        </div>
       </div>
     </aside>
   );
 }
 
-// FloorView Component - Updated with proper prop handling
-function FloorView({ tickets, officeLayout, setSelectedTicket, layoutConfig, setLayoutConfig, currentFloor }) {
-  const [selectedNumbers, setSelectedNumbers] = useState([]);
-  const [selectedSection, setSelectedSection] = useState('all');
+// FloorView Component - Updated for responsiveness
+function FloorView({ officeLayout, tickets, setSelectedTicket, currentFloor }) {
+  const [selectedSection, setSelectedSection] = useState('floor'); // Default to 'floor'
+  const [selectedSystem, setSelectedSystem] = useState(null);
 
-  // Filter tickets for current floor
-  const floorTickets = tickets.filter(ticket => ticket.floor === currentFloor);
-
-  // Section filters configuration with consistent dark colors
-  const sectionFilters = [
-    { type: 'WORKSTATION', label: 'Workstations', icon: <Laptop size={16} className="text-gray-400" /> },
-    { type: 'MD_CABIN', label: 'Cabins', icon: <Users size={16} className="text-gray-400" /> },
-    { type: 'TECHNICAL_WS', label: 'Tech Workstations', icon: <Cpu size={16} className="text-gray-400" /> },
-    { type: 'CONFERENCE', label: 'Conference', icon: <Phone size={16} className="text-gray-400" /> },
-    { type: 'MEETING_ROOM', label: 'Meeting Rooms', icon: <Clock size={16} className="text-gray-400" /> },
-    { type: 'TEAM_LEAD', label: 'Team Lead', icon: <Award size={16} className="text-gray-400" /> }
-  ];
-
-  // Function to filter systems by section
-  const isSectionVisible = (system) => {
-    return selectedSection === 'all' || system.type === selectedSection;
-  };
-
-  // Add this helper function inside FloorView, before the return statement
-  // This function now organizes pairs into columns with a specific number of pairs per column
-  const organizeLayoutByImage = (systems, pairsPerColumn = 4) => {
-    const filteredSystems = systems.filter(system =>
-      system.id && system.type !== 'EMPTY' && system.type !== 'CORRIDOR' && isSectionVisible(system)
-    );
-
-    // Group systems by their type
-    const groupedSystems = filteredSystems.reduce((acc, system) => {
-      const type = system.type;
-      if (!acc[type]) {
-        acc[type] = [];
-      }
-      acc[type].push(system);
-      return acc;
-    }, {});
-
-    const columns = [];
-    let currentColumn = [];
-    let currentPairCount = 0;
-
-    // Process each type of system separately
-    Object.entries(groupedSystems).forEach(([type, systems]) => {
-      // Add a spacer if we're starting a new type and the current column isn't empty
-      if (currentColumn.length > 0) {
-        currentColumn.push([null, null]); // Add a spacer pair
-        currentPairCount++;
-      }
-
-      // Group systems into pairs
-      for (let i = 0; i < systems.length; i += 2) {
-        const pair = [systems[i], systems[i + 1] || null];
-        
-        // If we've reached the pairs per column limit, start a new column
-        if (currentPairCount >= pairsPerColumn) {
-          columns.push(currentColumn);
-          currentColumn = [];
-          currentPairCount = 0;
-        }
-
-        currentColumn.push(pair);
-        currentPairCount++;
-      }
-    });
-
-    // Add the last column if it's not empty
-    if (currentColumn.length > 0) {
-      columns.push(currentColumn);
-    }
-
-    return columns;
-  };
-
-  // Generated connection pairs with sample device IDs
-  const connectionPairs = [
-    [
-      { left: 'WS-001', right: 'WS-002' }, { left: 'WS-003', right: 'WS-004' }, { left: 'WS-005', right: 'WS-006' },
-      { left: 'WS-007', right: 'WS-008' }, { left: 'WS-009', right: 'WS-010' }, { left: 'WS-011', right: 'WS-012' },
-      { left: 'WS-013', right: 'WS-014' }, { left: 'WS-015', right: 'WS-016' }, { left: 'WS-017', right: 'WS-018' }, 
-      { left: 'WS-019', right: 'WS-020' }, { left: 'WS-021', right: 'WS-022' }, { left: 'WS-023', right: 'WS-024' }, 
-      { left: 'WS-025', right: 'WS-026' }, { left: 'WS-027', right: 'WS-028' }, { left: 'WS-015', right: 'WS-016' },
-      { left: 'WS-017', right: 'WS-018' }, { left: 'WS-019', right: 'WS-020' }, { left: 'WS-021', right: 'WS-022' }, 
-      { left: 'WS-023', right: 'WS-024' }, { left: 'WS-025', right: 'WS-026' }, { left: 'WS-027', right: 'WS-028' }, 
-      { left: 'WS-029', right: 'WS-030' }, { left: 'WS-031', right: 'WS-032' }, { left: 'WS-033', right: 'WS-034' },
-      { left: 'WS-035', right: 'WS-036' }, { left: 'WS-037', right: 'WS-038' }, { left: 'WS-039', right: 'WS-040' },
-      { left: 'WS-041', right: 'WS-042' }, { left: 'WS-043', right: 'WS-044' }, { left: 'WS-045', right: 'WS-046' },
-      { left: 'WS-047', right: 'WS-048' }, { left: 'WS-049', right: 'WS-050' }, { left: 'WS-051', right: 'WS-052' },
-      { left: 'WS-053', right: 'WS-054' }, { left: 'WS-055', right: 'WS-056' }, { left: 'WS-057', right: 'WS-058' },
-      { left: 'WS-059', right: 'WS-060' }, { left: 'WS-061', right: 'WS-062' }, { left: 'WS-063', right: 'WS-064' },
-      { left: 'WS-065', right: 'WS-066' }, { left: 'WS-067', right: 'WS-068' }, { left: 'WS-069', right: 'WS-070' },  
-      { left: 'WS-071', right: 'WS-072' }, { left: 'WS-073', right: 'WS-074' }, { left: 'WS-075', right: 'WS-076' },
-      { left: 'WS-077', right: 'WS-078' }, { left: 'WS-079', right: 'WS-080' }, { left: 'WS-081', right: 'WS-082' },
-      { left: 'WS-083', right: 'WS-084' }, { left: 'WS-085', right: 'WS-086' }, { left: 'WS-087', right: 'WS-088' },
-      { left: 'WS-089', right: 'WS-090' }, { left: 'WS-091', right: 'WS-092' }, { left: 'WS-093', right: 'WS-094' },
-      { left: 'WS-095', right: 'WS-096' }, { left: 'WS-097', right: 'WS-098' }, { left: 'WS-099', right: 'WS-100' },
-      { left: 'WS-101', right: 'WS-102' }, { left: 'WS-103', right: 'WS-104' }, { left: 'WS-105', right: 'WS-106' },
-      { left: 'WS-107', right: 'WS-108' }, { left: 'WS-109', right: 'WS-110' }, { left: 'WS-111', right: 'WS-112' },
-      { left: 'WS-113', right: 'WS-114' }, { left: 'WS-115', right: 'WS-116' }, { left: 'WS-117', right: 'WS-118' },
-      { left: 'WS-119', right: 'WS-120' }, { left: 'WS-121', right: 'WS-122' }, { left: 'WS-123', right: 'WS-124' },
-      { left: 'WS-125', right: 'WS-126' }, { left: 'WS-127', right: 'WS-128' }, { left: 'WS-129', right: 'WS-130' },
-      { left: 'WS-131', right: 'WS-132' }, { left: 'WS-133', right: 'WS-134' }, { left: 'WS-135', right: 'WS-136' },
-      { left: 'WS-137', right: 'WS-138' }, { left: 'WS-139', right: 'WS-140' }, { left: 'WS-141', right: 'WS-142' },
-      { left: 'WS-143', right: 'WS-144' }, { left: 'WS-145', right: 'WS-146' }, { left: 'WS-147', right: 'WS-148' },
-      { left: 'WS-149', right: 'WS-150' }, { left: 'WS-151', right: 'WS-152' }, { left: 'WS-153', right: 'WS-154' },
-      { left: 'WS-155', right: 'WS-156' }, { left: 'WS-157', right: 'WS-158' }, { left: 'WS-159', right: 'WS-160' },
-      { left: 'WS-161', right: 'WS-162' }, { left: 'WS-163', right: 'WS-164' }, { left: 'WS-165', right: 'WS-166' },
-      { left: 'WS-167', right: 'WS-168' }, { left: 'WS-169', right: 'WS-170' }, { left: 'WS-171', right: 'WS-172' },
-      { left: 'WS-173', right: 'WS-174' }, { left: 'WS-175', right: 'WS-176' }, { left: 'WS-177', right: 'WS-178' },
-      { left: 'WS-179', right: 'WS-180' }, { left: 'WS-181', right: 'WS-182' }, { left: 'WS-183', right: 'WS-184' },
-      { left: 'WS-185', right: 'WS-186' }, { left: 'WS-187', right: 'WS-188' }, { left: 'WS-189', right: 'WS-190' },
-      { left: 'WS-191', right: 'WS-192' }, { left: 'WS-193', right: 'WS-194' }, { left: 'WS-195', right: 'WS-196' },
-      { left: 'WS-197', right: 'WS-198' }, { left: 'WS-199', right: 'WS-199' }, { left: 'WS-200', right: 'WS-200' },
-      { left: 'WS-201', right: 'WS-201' }, { left: 'WS-202', right: 'WS-202' }, { left: 'WS-203', right: 'WS-203' },
-      { left: 'WS-204', right: 'WS-204' }, { left: 'WS-205', right: 'WS-205' }, { left: 'WS-206', right: 'WS-206' },
-      { left: 'WS-207', right: 'WS-207' }, { left: 'WS-208', right: 'WS-208' }, { left: 'WS-209', right: 'WS-209' },
-      { left: 'WS-210', right: 'WS-210' }, { left: 'WS-211', right: 'WS-211' }, { left: 'WS-212', right: 'WS-212' },
-      { left: 'WS-213', right: 'WS-213' }, { left: 'WS-214', right: 'WS-214' }, { left: 'WS-215', right: 'WS-215' },
-      { left: 'WS-216', right: 'WS-216' }, { left: 'WS-217', right: 'WS-217' }, { left: 'WS-218', right: 'WS-218' },
-      { left: 'WS-219', right: 'WS-219' }, { left: 'WS-220', right: 'WS-220' }, { left: 'WS-221', right: 'WS-221' },
-      { left: 'WS-222', right: 'WS-222' }, { left: 'WS-223', right: 'WS-223' }, { left: 'WS-224', right: 'WS-224' },
-      { left: 'WS-225', right: 'WS-225' }, { left: 'WS-226', right: 'WS-226' }, { left: 'WS-227', right: 'WS-227' },
-      { left: 'WS-228', right: 'WS-228' }, { left: 'WS-229', right: 'WS-229' }, { left: 'WS-230', right: 'WS-230' },
-      { left: 'WS-231', right: 'WS-231' }, { left: 'WS-232', right: 'WS-232' }, { left: 'WS-233', right: 'WS-233' },
-      { left: 'WS-234', right: 'WS-234' }, { left: 'WS-235', right: 'WS-235' }, { left: 'WS-236', right: 'WS-236' },
-      { left: 'WS-237', right: 'WS-237' }, { left: 'WS-238', right: 'WS-238' }, { left: 'WS-239', right: 'WS-239' },
-      { left: 'WS-240', right: 'WS-240' }, { left: 'WS-241', right: 'WS-241' }, { left: 'WS-242', right: 'WS-242' },
-      { left: 'WS-243', right: 'WS-243' }, { left: 'WS-244', right: 'WS-244' }, { left: 'WS-245', right: 'WS-245' },
-      { left: 'WS-246', right: 'WS-246' }, { left: 'WS-247', right: 'WS-247' }, { left: 'WS-248', right: 'WS-248' },
-      { left: 'WS-249', right: 'WS-249' }, { left: 'WS-250', right: 'WS-250' }, { left: 'WS-251', right: 'WS-251' },
-      { left: 'WS-252', right: 'WS-252' }, { left: 'WS-253', right: 'WS-253' }, { left: 'WS-254', right: 'WS-254' },
-      { left: 'WS-255', right: 'WS-255' }, { left: 'WS-256', right: 'WS-256' }, { left: 'WS-257', right: 'WS-257' },
-      { left: 'WS-258', right: 'WS-258' }, { left: 'WS-259', right: 'WS-259' }, { left: 'WS-260', right: 'WS-260' },
-      { left: 'WS-261', right: 'WS-261' }, { left: 'WS-262', right: 'WS-262' }, { left: 'WS-263', right: 'WS-263' },
-      { left: 'WS-264', right: 'WS-264' }, { left: 'WS-265', right: 'WS-265' }, { left: 'WS-266', right: 'WS-266' },
-      { left: 'WS-267', right: 'WS-267' }, { left: 'WS-268', right: 'WS-268' }, { left: 'WS-269', right: 'WS-269' },
-      { left: 'WS-270', right: 'WS-270' }, { left: 'WS-271', right: 'WS-271' }, { left: 'WS-272', right: 'WS-272' },
-      { left: 'WS-273', right: 'WS-273' }, { left: 'WS-274', right: 'WS-274' }, { left: 'WS-275', right: 'WS-275' },
-      { left: 'WS-276', right: 'WS-276' }, { left: 'WS-277', right: 'WS-277' }, { left: 'WS-278', right: 'WS-278' },
-      { left: 'WS-279', right: 'WS-279' }, { left: 'WS-280', right: 'WS-280' }, { left: 'WS-281', right: 'WS-281' },
-      { left: 'WS-282', right: 'WS-282' }, { left: 'WS-283', right: 'WS-283' }, { left: 'WS-284', right: 'WS-284' },
-      { left: 'WS-285', right: 'WS-285' }, { left: 'WS-286', right: 'WS-286' }, { left: 'WS-287', right: 'WS-287' },
-      { left: 'WS-288', right: 'WS-288' }, { left: 'WS-289', right: 'WS-289' }, { left: 'WS-290', right: 'WS-290' },
-      { left: 'WS-291', right: 'WS-291' }, { left: 'WS-292', right: 'WS-292' }, { left: 'WS-293', right: 'WS-293' },
-      { left: 'WS-294', right: 'WS-294' }, { left: 'WS-295', right: 'WS-295' }, { left: 'WS-296', right: 'WS-296' },
-      { left: 'WS-297', right: 'WS-297' }, { left: 'WS-298', right: 'WS-298' }, { left: 'WS-299', right: 'WS-299' },
-      { left: 'WS-300', right: 'WS-300' }, { left: 'WS-301', right: 'WS-301' }, { left: 'WS-302', right: 'WS-302' },
-      { left: 'WS-303', right: 'WS-303' }, { left: 'WS-304', right: 'WS-304' }, { left: 'WS-305', right: 'WS-305' },
-      { left: 'WS-306', right: 'WS-306' }, { left: 'WS-307', right: 'WS-307' }, { left: 'WS-308', right: 'WS-308' },
-      { left: 'WS-309', right: 'WS-309' }, { left: 'WS-310', right: 'WS-310' }, { left: 'WS-311', right: 'WS-311' },
-      { left: 'WS-312', right: 'WS-312' }, { left: 'WS-313', right: 'WS-313' }, { left: 'WS-314', right: 'WS-314' },
-      { left: 'WS-315', right: 'WS-315' }, { left: 'WS-316', right: 'WS-316' }, { left: 'WS-317', right: 'WS-317' },
-      { left: 'WS-318', right: 'WS-318' }, { left: 'WS-319', right: 'WS-319' }, { left: 'WS-320', right: 'WS-320' },
-      { left: 'WS-321', right: 'WS-321' }, { left: 'WS-322', right: 'WS-322' }, { left: 'WS-323', right: 'WS-323' },
-      { left: 'WS-324', right: 'WS-324' }, { left: 'WS-325', right: 'WS-325' }, { left: 'WS-326', right: 'WS-326' },
-      { left: 'WS-327', right: 'WS-327' }, { left: 'WS-328', right: 'WS-328' }, { left: 'WS-329', right: 'WS-329' },
-      { left: 'WS-330', right: 'WS-330' }, { left: 'WS-331', right: 'WS-331' }, { left: 'WS-332', right: 'WS-332' },
-      { left: 'WS-333', right: 'WS-333' }, { left: 'WS-334', right: 'WS-334' }, { left: 'WS-335', right: 'WS-335' },
-      { left: 'WS-336', right: 'WS-336' }, { left: 'WS-337', right: 'WS-337' }, { left: 'WS-338', right: 'WS-338' },
-      { left: 'WS-339', right: 'WS-339' }, { left: 'WS-340', right: 'WS-340' }, { left: 'WS-341', right: 'WS-341' },
-      { left: 'WS-342', right: 'WS-342' }, { left: 'WS-343', right: 'WS-343' }, { left: 'WS-344', right: 'WS-344' },
-      { left: 'WS-345', right: 'WS-345' }, { left: 'WS-346', right: 'WS-346' }, { left: 'WS-347', right: 'WS-347' },
-      { left: 'WS-348', right: 'WS-348' }, { left: 'WS-349', right: 'WS-349' }, { left: 'WS-350', right: 'WS-350' },
-      { left: 'WS-351', right: 'WS-351' }, { left: 'WS-352', right: 'WS-352' }, { left: 'WS-353', right: 'WS-353' },
-      { left: 'WS-354', right: 'WS-354' }, { left: 'WS-355', right: 'WS-355' }, { left: 'WS-356', right: 'WS-356' },
-      { left: 'WS-357', right: 'WS-357' }, { left: 'WS-358', right: 'WS-358' }, { left: 'WS-359', right: 'WS-359' },
-      { left: 'WS-360', right: 'WS-360' }, { left: 'WS-361', right: 'WS-361' }, { left: 'WS-362', right: 'WS-362' },
-      { left: 'WS-363', right: 'WS-363' }, { left: 'WS-364', right: 'WS-364' }, { left: 'WS-365', right: 'WS-365' },
-      { left: 'WS-366', right: 'WS-366' }, { left: 'WS-367', right: 'WS-367' }, { left: 'WS-368', right: 'WS-368' },
-      { left: 'WS-369', right: 'WS-369' }, { left: 'WS-370', right: 'WS-370' }, { left: 'WS-371', right: 'WS-371' },
-      { left: 'WS-372', right: 'WS-372' }, { left: 'WS-373', right: 'WS-373' }, { left: 'WS-374', right: 'WS-374' },
-      { left: 'WS-375', right: 'WS-375' }, { left: 'WS-376', right: 'WS-376' }, { left: 'WS-377', right: 'WS-377' },
-      { left: 'WS-378', right: 'WS-378' }, { left: 'WS-379', right: 'WS-379' }, { left: 'WS-380', right: 'WS-380' },
-      { left: 'WS-381', right: 'WS-381' }, { left: 'WS-382', right: 'WS-382' }, { left: 'WS-383', right: 'WS-383' },
-      { left: 'WS-384', right: 'WS-384' }, { left: 'WS-385', right: 'WS-385' }, { left: 'WS-386', right: 'WS-386' },
-      { left: 'WS-387', right: 'WS-387' }, { left: 'WS-388', right: 'WS-388' }, { left: 'WS-389', right: 'WS-389' },
-      { left: 'WS-390', right: 'WS-390' }, { left: 'WS-391', right: 'WS-391' }, { left: 'WS-392', right: 'WS-392' },
-      { left: 'WS-393', right: 'WS-393' }, { left: 'WS-394', right: 'WS-394' }, { left: 'WS-395', right: 'WS-395' },
-      { left: 'WS-396', right: 'WS-396' }, { left: 'WS-397', right: 'WS-397' }, { left: 'WS-398', right: 'WS-398' },
-      { left: 'WS-399', right: 'WS-399' }, { left: 'WS-400', right: 'WS-400' }, { left: 'WS-401', right: 'WS-401' },
-      { left: 'WS-402', right: 'WS-402' }, { left: 'WS-403', right: 'WS-403' }, { left: 'WS-404', right: 'WS-404' },
-      { left: 'WS-405', right: 'WS-405' }, { left: 'WS-406', right: 'WS-406' }, { left: 'WS-407', right: 'WS-407' },
-      { left: 'WS-408', right: 'WS-408' }, { left: 'WS-409', right: 'WS-409' }, { left: 'WS-410', right: 'WS-410' },
-      { left: 'WS-411', right: 'WS-411' }, { left: 'TWS-01', right: 'TWS-02' }, { left: 'TWS-03', right: 'TWS-04' },
-      { left: 'TWS-05', right: 'TWS-06' }, { left: 'TWS-07', right: 'TWS-08' }, { left: 'TWS-09', right: 'TWS-10' },
-      { left: 'TWS-11', right: 'TWS-12' }, { left: 'TWS-13', right: 'TWS-14' }, { left: 'TWS-15', right: 'TWS-16' },
-      { left: 'TWS-17', right: 'TWS-18' }, { left: 'TWS-19', right: 'TWS-20' }, { left: 'TWS-21', right: 'CB-01' },
-      { left: 'CB-02', right: 'CB-03' }, { left: 'CB-04', right: 'MR-01' }, { left: 'MR-02', right: 'MR-03' },
-      { left: 'MR-04', right: 'MR-05' }, { left: 'MR-06', right: 'MR-07' }, { left: 'MR-08', right: 'MR-09' },
-      { left: 'MR-10', right: 'MR-11' }, { left: 'CO-01', right: 'CO-02' }, { left: 'TL-03', right: '' }
-    ],
-  ];
-
-  const handleNumberClick = (numberId, number) => {
-    setSelectedNumbers(prev =>
-      prev.includes(numberId)
-        ? prev.filter(id => id !== numberId)
-        : [...prev, numberId]
-    );
-  };
-
-  // Handle system click to select ticket
   const handleSystemClick = (system) => {
-    const ticket = floorTickets.find(t => t.systemId === system.id);
-    if (ticket) {
-      setSelectedTicket(ticket);
+    setSelectedSystem(system);
+    
+    // Find the most recent ticket for this system
+    const systemTickets = tickets.filter(t => 
+      (t.systemId === system.id || t.deviceId === system.id) && 
+      (t.status === 'open' || t.status === 'in-progress')
+    ).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    if (systemTickets.length > 0) {
+      // If there are tickets, show the most recent one
+      setSelectedTicket(systemTickets[0]);
+    } else {
+      // If no tickets, create a new ticket object with system info
+      const newTicket = {
+        systemId: system.id,
+        deviceId: system.id,
+        floor: system.floor || currentFloor,
+        type: system.type,
+        status: 'open',
+        createdAt: new Date(),
+        issue: `Issue with ${system.type} ${system.id}`,
+        priority: 'medium'
+      };
+      setSelectedTicket(newTicket);
     }
   };
 
-    return (
+  // isSectionVisible is now handled within the rendering logic to group by type
+
+  const getSectionColor = (type) => {
+    switch (type) {
+      case 'WS': return 'bg-blue-500';
+      case 'MS': return 'bg-green-500';
+      case 'PR': return 'bg-purple-500';
+      case 'EMPTY': return 'bg-gray-200';
+      case 'CORRIDOR': return 'bg-gray-300';
+      default: return 'bg-gray-400';
+    }
+  };
+
+  const organizeLayoutByImage = (systems) => {
+    // Simply return the array of systems without pairing
+    return systems;
+  };
+
+  // Define the new sections
+  const sections = [
+    { id: 'floor', label: 'Floor' },
+    { id: 'cabin', label: 'Cabin' },
+  ];
+
+  // Filter systems based on the overall selected section
+  const systemsForSelectedSection = officeLayout.flat().filter(system =>
+    system.id && system.type !== 'EMPTY' && system.type !== 'CORRIDOR' &&
+    ((selectedSection === 'floor' && (system.type === 'WORKSTATION' || system.type === 'TECHNICAL_WS' || system.type === 'TEAM_LEAD')) ||
+     (selectedSection === 'cabin' && (system.type === 'MD_CABIN' || system.type === 'MEETING_ROOM' || system.type === 'CONFERENCE')))
+  );
+
+  // Group systems within the selected section by their specific type
+  const groupedSystems = systemsForSelectedSection.reduce((acc, system) => {
+    const type = system.type;
+    if (!acc[type]) {
+      acc[type] = [];
+    }
+    acc[type].push(system);
+    return acc;
+  }, {});
+
+  return (
     <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 max-w-7xl">
       <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-700 p-4 sm:p-8">
-        {/* Section Filters - Responsive */}
         <div className="mb-4 sm:mb-8">
-          <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-4">
-            <button
-              onClick={() => setSelectedSection('all')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base ${
-                selectedSection === 'all' 
-                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' 
-                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-              }`}
-            >
-              <Map size={16} className={selectedSection === 'all' ? 'text-white' : 'text-gray-400'} />
-              <span>All Sections</span>
-            </button>
-            {sectionFilters.map((filter) => (
-              <button
-                key={filter.type}
-                onClick={() => setSelectedSection(filter.type)}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base ${
-                  selectedSection === filter.type 
-                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' 
-                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                }`}
-              >
-                {React.cloneElement(filter.icon, {
-                  className: selectedSection === filter.type ? 'text-white' : 'text-gray-400'
-                })}
-                <span>{filter.label}</span>
-              </button>
-            ))}
+          {/* Toggle-like Section Filters */}
+          <div className="flex justify-center">
+            <div className="inline-flex bg-gray-700 rounded-full p-1 space-x-1">
+              {sections.map((section) => (
+                <button
+                  key={section.id}
+                  onClick={() => setSelectedSection(section.id)}
+                  className={`px-6 py-2 rounded-full text-sm font-medium transition-all duration-200 ${selectedSection === section.id
+                      ? 'bg-white text-purple-700 shadow-sm' // Active state
+                      : 'text-gray-300 hover:text-white' // Inactive state
+                  }`}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Floor Layout - Render Columns with Paired Systems */}
-        <div className="flex flex-wrap justify-center gap-x-6 sm:gap-x-10 md:gap-x-14 py-4">
-          {organizeLayoutByImage(officeLayout.flat(), 4).map((column, colIndex) => (
-            <div key={`column-${colIndex}`} className="flex flex-col items-center gap-y-4 mx-4">
-              {column.map((pair, pairIndex) => (
-                <div key={`pair-${colIndex}-${pairIndex}`} className="flex items-center justify-center gap-0.5 sm:gap-1 my-2">
-                  {pair[0] && (
-                    <OfficeDesk
-                      key={`system-${colIndex}-${pairIndex}-0`}
-                      system={pair[0]}
-                      status={floorTickets.find(t => t.systemId === pair[0].id)?.status || 'available'}
-                      onClick={() => handleSystemClick(pair[0])}
-                    />
-                  )}
-
-                  {pair.length === 2 && pair[1] && (
-                    <div className="flex items-center justify-center w-6">
-                      <span className="text-purple-400 font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl">H</span>
-                    </div>
-                  )}
-
-                  {pair.length === 2 && pair[1] && (
-                    <OfficeDesk
-                      key={`system-${colIndex}-${pairIndex}-1`}
-                      system={pair[1]}
-                      status={floorTickets.find(t => t.systemId === pair[1].id)?.status || 'available'}
-                      onClick={() => handleSystemClick(pair[1])}
-                    />
-                  )}
+        {/* Render grouped systems */}
+        <div className="flex flex-col items-center space-y-8">
+          {selectedSection === 'floor' && (
+            <>
+              {groupedSystems.WORKSTATION && groupedSystems.WORKSTATION.length > 0 && (
+                <div className="w-full flex flex-col items-center">
+                  <h3 className="text-lg font-semibold text-white mb-4">Workstations</h3>
+                  {/* Use a responsive grid for pairs */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
+                    {organizeLayoutByImage(groupedSystems.WORKSTATION).map((system, index) => (
+                      <div key={`ws-${index}`} className="flex items-center justify-center">
+                        <OfficeDesk
+                          key={`ws-system-${index}`}
+                          system={system}
+                          status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
+                          onClick={() => handleSystemClick(system)}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
-          ))}
+              )}
+
+              {groupedSystems.TECHNICAL_WS && groupedSystems.TECHNICAL_WS.length > 0 && (
+                <div className="w-full flex flex-col items-center">
+                  <h3 className="text-lg font-semibold text-white mb-4">Technical Workstations</h3>
+                   {/* Use a responsive grid for pairs */}
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
+                     {organizeLayoutByImage(groupedSystems.TECHNICAL_WS).map((system, index) => (
+                       <div key={`tws-${index}`} className="flex items-center justify-center">
+                         <OfficeDesk
+                           key={`tws-system-${index}`}
+                           system={system}
+                           status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
+                           onClick={() => handleSystemClick(system)}
+                         />
+                       </div>
+                     ))}
+                   </div>
+                </div>
+              )}
+
+              {groupedSystems.TEAM_LEAD && groupedSystems.TEAM_LEAD.length > 0 && (
+                <div className="w-full flex flex-col items-center">
+                  <h3 className="text-lg font-semibold text-white mb-4">Team Lead Tables</h3>
+                  {/* Use a responsive grid for pairs */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
+                    {organizeLayoutByImage(groupedSystems.TEAM_LEAD).map((system, index) => (
+                      <div key={`tl-${index}`} className="flex items-center justify-center">
+                        <OfficeDesk
+                          key={`tl-system-${index}`}
+                          system={system}
+                          status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
+                          onClick={() => handleSystemClick(system)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+               {/* Message if no systems visible in Floor section */}
+              {!groupedSystems.WORKSTATION && !groupedSystems.TECHNICAL_WS && !groupedSystems.TEAM_LEAD && (
+                 <div className="text-gray-400 text-center text-sm">No floor systems available in this section.</div>
+              )}
+
+            </>
+          )}
+
+          {selectedSection === 'cabin' && (
+             <>
+               {/* Render Cabin types in separate sections using the standard layout */}
+               {groupedSystems.MD_CABIN && groupedSystems.MD_CABIN.length > 0 && (
+                 <div className="w-full flex flex-col items-center">
+                   <h3 className="text-lg font-semibold text-white mb-4">MD Cabins</h3>
+                    {/* Use a responsive grid for pairs */}
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
+                     {organizeLayoutByImage(groupedSystems.MD_CABIN).map((system, index) => (
+                       <div key={`mdcabin-${index}`} className="flex items-center justify-center">
+                         <OfficeDesk
+                           key={`mdcabin-system-${index}`}
+                           system={system}
+                           status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
+                           onClick={() => handleSystemClick(system)}
+                         />
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               )}
+
+               {groupedSystems.MEETING_ROOM && groupedSystems.MEETING_ROOM.length > 0 && (
+                 <div className="w-full flex flex-col items-center">
+                   <h3 className="text-lg font-semibold text-white mb-4">Meeting Rooms</h3>
+                    {/* Use a responsive grid for pairs */}
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
+                     {organizeLayoutByImage(groupedSystems.MEETING_ROOM).map((system, index) => (
+                       <div key={`meeting-${index}`} className="flex items-center justify-center">
+                         <OfficeDesk
+                           key={`meeting-system-${index}`}
+                           system={system}
+                           status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
+                           onClick={() => handleSystemClick(system)}
+                         />
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               )}
+
+              {groupedSystems.CONFERENCE && groupedSystems.CONFERENCE.length > 0 && (
+                <div className="w-full flex flex-col items-center">
+                  <h3 className="text-lg font-semibold text-white mb-4">Conference Rooms</h3>
+                   {/* Use a responsive grid for pairs */}
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
+                     {organizeLayoutByImage(groupedSystems.CONFERENCE).map((system, index) => (
+                       <div key={`conference-${index}`} className="flex items-center justify-center">
+                         <OfficeDesk
+                           key={`conference-system-${index}`}
+                           system={system}
+                           status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
+                           onClick={() => handleSystemClick(system)}
+                         />
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+              )}
+
+               {/* Message if no systems visible in Cabin section */}
+              {!groupedSystems.MD_CABIN && !groupedSystems.MEETING_ROOM && !groupedSystems.CONFERENCE && (
+                <div className="text-gray-400 text-center text-sm">No cabin systems available in this section.</div>
+              )}
+             </>
+          )}
+
+           {/* Message if no section is selected (shouldn't happen with default) */}
+          {!selectedSection && (
+             <div className="text-gray-400 text-center text-sm">Select a section to view the layout.</div>
+          )}
+
         </div>
       </div>
     </div>
   );
 }
 
-// Ticket List Component - Updated for better responsiveness
-function TicketList({ tickets, setSelectedTicket }) {
+// Ticket List Component - Updated to display all tickets
+function ReportsView({ tickets, setSelectedTicket }) {
   const [filter, setFilter] = useState('all');
+  const [sortField, setSortField] = useState('createdAt');
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredTickets = filter === 'all'
-    ? tickets
-    : tickets.filter(ticket => ticket.status?.toLowerCase() === filter.toLowerCase());
-
-  // Priority badge component
-  const colors = {
-    high: 'bg-red-500 text-white',
-    medium: 'bg-yellow-500 text-black',
-    low: 'bg-green-500 text-white'
+  // Helper function to extract numeric ID from system ID
+  const extractNumericId = (systemId) => {
+    if (!systemId) return 'N/A';
+    // Match any sequence of digits in the string
+    const match = systemId.match(/\d+/);
+    return match ? match[0] : 'N/A';
   };
 
-  const PriorityBadge = ({ priority }) => {
-    return (
-      <span className={`text-xs px-1 sm:px-2 py-0.5 sm:py-1 rounded ${colors[priority?.toLowerCase()] || colors.low} font-medium`}>
-        {priority?.charAt(0).toUpperCase() + priority?.slice(1).toLowerCase() || 'Low'}
-      </span>
-    );
+  // Apply filters, search, and sorting
+  const filteredTickets = useMemo(() => {
+    let result = [...tickets];
+
+    // Apply status filter
+    if (filter !== 'all') {
+      result = result.filter(ticket => ticket.status?.toLowerCase() === filter.toLowerCase());
+    }
+
+    // Apply search - Make sure search handles cases where properties might be null or undefined
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(ticket => {
+        const empId = extractNumericId(ticket.deviceId || ticket.systemId)?.toLowerCase() || '';
+        const empName = ticket.empName?.toLowerCase() || '';
+        const deviceId = ticket.deviceId?.toLowerCase() || '';
+        const systemId = ticket.systemId?.toLowerCase() || '';
+        const issueType = ticket.issueType?.toLowerCase() || ticket.type?.toLowerCase() || '';
+        const issue = ticket.issue?.toLowerCase() || ticket.description?.toLowerCase() || '';
+        const handler = ticket.assignedTo?.toLowerCase() || '';
+        const remark = ticket.remark?.toLowerCase() || '';
+
+        return (
+          empId.includes(query) ||
+          empName.includes(query) ||
+          deviceId.includes(query) ||
+          systemId.includes(query) ||
+          issueType.includes(query) ||
+          issue.includes(query) ||
+          handler.includes(query) ||
+          remark.includes(query)
+        );
+      });
+    }
+
+    // Apply sorting
+    result.sort((a, b) => {
+      const aValue = a[sortField];
+      const bValue = b[sortField];
+
+      // Handle potential null/undefined values for comparison
+      if (aValue == null && bValue == null) return 0;
+      if (aValue == null) return sortDirection === 'asc' ? -1 : 1;
+      if (bValue == null) return sortDirection === 'asc' ? 1 : -1;
+
+      // Robust Date comparison
+      if (sortField === 'createdAt' || sortField === 'updatedAt' || sortField === 'resolvedAt') {
+          const dateA = aValue instanceof Date ? aValue : (aValue ? new Date(aValue) : null);
+          const dateB = bValue instanceof Date ? bValue : (bValue ? new Date(bValue) : null);
+
+          const timeA = dateA && !isNaN(dateA.getTime()) ? dateA.getTime() : (sortDirection === 'asc' ? -Infinity : Infinity);
+          const timeB = dateB && !isNaN(dateB.getTime()) ? dateB.getTime() : (sortDirection === 'asc' ? -Infinity : Infinity);
+
+          if (timeA === timeB) return 0;
+          return sortDirection === 'asc' ? timeA - timeB : timeB - timeA;
+      }
+
+      // General comparison for other types (numbers, strings)
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0; // Equal
+    });
+
+    return result;
+  }, [tickets, filter, searchQuery, sortField, sortDirection]);
+
+  // Helper function to toggle sort direction
+  const toggleSortDirection = (field) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc'); // Default to ascending when changing field
+    }
+  };
+
+  // Add this function before the ReportsView component
+  const getBuildingFromFloor = (floor) => {
+    if (!floor) return 'N/A';
+    
+    // Map floors to buildings
+    if (floor.startsWith('S')) return 'Building 1';
+    if (floor.startsWith('F')) return 'Building 2';
+    if (floor.startsWith('G')) return 'Building 3';
+    
+    return 'N/A';
   };
 
   return (
     <div className="bg-gray-800 rounded-xl shadow-xl p-3 sm:p-4 md:p-6 border border-gray-700 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 md:mb-6">
-        <h2 className="text-xl md:text-2xl font-bold text-gray-100 flex items-center">
+        <h2 className="text-xl md::text-2xl font-bold text-white flex items-center">
           <AlertTriangle size={20} className="text-purple-400 mr-2 md:mr-3" />
           Support Tickets
         </h2>
 
-        {/* Filter buttons - Responsive */}
-        <div className="flex flex-wrap gap-2 bg-gray-900 p-1 rounded-lg border border-gray-700">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'all' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-gray-300'}`}
+        {/* Search and Filter Controls */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            placeholder="Search tickets..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
+          />
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
           >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('open')}
-            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'open' ? 'bg-red-500 text-white' : 'text-gray-400 hover:text-gray-300'}`}
-          >
-            Open
-          </button>
-          <button
-            onClick={() => setFilter('in-progress')}
-            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'in-progress' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-gray-300'}`}
-          >
-            In Progress
-          </button>
-          <button
-            onClick={() => setFilter('resolved')}
-            className={`px-2 sm:px-3 md:px-4 py-1 sm:py-2 rounded text-xs sm:text-sm ${filter === 'resolved' ? 'bg-green-500 text-white' : 'text-gray-400 hover:text-gray-300'}`}
-          >
-            Resolved
-          </button>
+            <option value="all">All Status</option>
+            <option value="open">Open</option>
+            <option value="in-progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+          </select>
         </div>
       </div>
 
-      {/* Tickets list - Responsive */}
-      <div className="space-y-2 md:space-y-3">
-        {filteredTickets.length === 0 ? (
-          <div className="bg-gray-900 rounded-lg p-4 md:p-6 text-center border border-gray-700">
-            <p className="text-gray-400">No tickets match your filter criteria.</p>
+      {/* Table Container with Horizontal Scroll */}
+      <div className="relative overflow-x-auto shadow-md sm:rounded-lg">
+        <div className="min-w-full inline-block align-middle">
+          <div className="overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-700">
+              <thead className="bg-gray-900">
+                <tr>
+                  {/* Table Headers - Matching the image format */}
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('createdAt')}>
+                    No. {sortField === 'createdAt' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('empId')}>
+                     EMP ID {sortField === 'empId' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('empName')}>
+                     EMP Name {sortField === 'empName' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('floor')}>
+                    Floor {sortField === 'floor' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('deviceId')}>
+                    Device ID {sortField === 'deviceId' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('type')}>
+                    Issue Type {sortField === 'type' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('issue')}>
+                    Description {sortField === 'issue' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('createdAt')}>
+                    Raised On {sortField === 'createdAt' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('resolvedAt')}>
+                    Resolved On {sortField === 'resolvedAt' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('status')}>
+                    Status {sortField === 'status' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('assignedTo')}>
+                    Handler {sortField === 'assignedTo' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                   <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('remark')}>
+                    Remark {sortField === 'remark' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                   <th scope="col" className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-white uppercase tracking-wider whitespace-nowrap cursor-pointer" onClick={() => toggleSortDirection('resolvedByBuilding')}>
+                     Resolved by handler on building {sortField === 'resolvedByBuilding' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {filteredTickets.length === 0 ? (
+                  <tr>
+                    <td colSpan="12" className="px-3 sm:px-4 py-2 sm:py-3 text-center text-white text-sm">
+                      {searchQuery ? 'No tickets match your search criteria.' : 'No tickets available.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTickets.map((ticket, index) => (
+                    <tr
+                      key={ticket.id}
+                      className={`bg-gray-900 ${index % 2 === 0 ? 'bg-opacity-50' : 'bg-opacity-30'} hover:bg-gray-800 cursor-pointer transition-colors duration-150`}
+                      onClick={() => setSelectedTicket(ticket)}
+                    >
+                      {/* Map ticket data to the columns based on the image format */}
+                      {/* Use index + 1 for numbering based on the filtered/sorted list */}
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">{index + 1}</td>
+                      {/* Ensure data access is safe, use N/A for missing data */}
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">
+                        {extractNumericId(ticket.deviceId || ticket.systemId)}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">{ticket.empName || 'N/A'}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">{ticket.floor || 'N/A'}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">{ticket.deviceId || ticket.systemId || 'N/A'}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">{ticket.issueType || ticket.type || 'N/A'}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white max-w-[200px] truncate">{ticket.issue || ticket.description || 'N/A'}</td>
+                      {/* Format dates safely */}
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">{ticket.createdAt ? (ticket.createdAt instanceof Date ? ticket.createdAt : new Date(ticket.createdAt))?.toLocaleString() : 'N/A'}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">
+                        {ticket.resolvedAt ? (
+                          new Date(ticket.resolvedAt).toLocaleString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        ) : 'N/A'}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm whitespace-nowrap">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          ticket.status === 'open' ? 'bg-red-500 text-white' :
+                          ticket.status === 'in-progress' ? 'bg-yellow-500 text-white' :
+                          ticket.status === 'resolved' ? 'bg-green-500 text-white' : 'bg-gray-500 text-white'
+                        }`}>
+                          {ticket.status || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">{ticket.assignedTo || 'N/A'}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">{ticket.remark || (ticket.status === 'resolved' ? 'Solved' : '-')}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-white whitespace-nowrap">
+                        {ticket.status === 'resolved' ? getBuildingFromFloor(ticket.floor) : 'N/A'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        ) : (
-          filteredTickets.map(ticket => (
-            <div
-              key={ticket.id}
-              onClick={() => setSelectedTicket(ticket)}
-              className="bg-gray-900 rounded-lg p-2 sm:p-3 md:p-4 border border-gray-700 hover:bg-gray-850 cursor-pointer transform hover:translate-x-1 transition-all duration-200"
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 sm:gap-3 md:gap-4 items-center">
-                <div className="flex items-center col-span-1 sm:col-span-2">
-                  <div className="bg-gray-800 p-1 sm:p-2 rounded border border-gray-700 mr-2 sm:mr-3">
-                    <Laptop size={16} className="text-purple-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-medium text-gray-200 truncate">{ticket.deviceId || ticket.systemId || 'Unknown Device'}</h3>
-                    <p className="text-xs text-gray-400 truncate">
-                      {ticket.floor || 'Unknown Floor'} · {ticket.createdAt || 'Unknown Date'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="col-span-1 sm:col-span-2 md:col-span-3">
-                  <p className="text-xs sm:text-sm text-gray-300 line-clamp-2">{ticket.issue}</p>
-                </div>
-
-                <div className="col-span-1 flex items-center justify-end gap-2">
-                  <PriorityBadge priority={ticket.priority} />
-                  <span className={`text-xs px-2 py-1 rounded font-medium ${ticket.status?.toLowerCase() === 'open' ? 'bg-red-500 text-white' :
-                      ticket.status?.toLowerCase() === 'in-progress' ? 'bg-yellow-500 text-black' :
-                        ticket.status?.toLowerCase() === 'resolved' ? 'bg-green-500 text-white' :
-                          'bg-gray-500 text-white'
-                    }`}>
-                    {ticket.status?.charAt(0).toUpperCase() + ticket.status?.slice(1).toLowerCase() || 'Unknown'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
+        </div>
       </div>
     </div>
   );
 }
+
+const sectionFilters = [
+  { type: 'WORKSTATION', label: 'Workstations', icon: <Monitor size={16} className="text-blue-400" /> },
+  { type: 'MEETING_ROOM', label: 'Meeting Rooms', icon: <Users size={16} className="text-purple-400" /> },
+  { type: 'MD_CABIN', label: 'MD Cabins', icon: <Award size={16} className="text-orange-400" /> },
+  { type: 'TECHNICAL_WS', label: 'Technical WS', icon: <Cpu size={16} className="text-green-400" /> },
+  { type: 'CONFERENCE', label: 'Conference', icon: <Phone size={16} className="text-red-400" /> },
+  { type: 'TEAM_LEAD', label: 'Team Lead', icon: <Users size={16} className="text-yellow-400" /> }
+];
