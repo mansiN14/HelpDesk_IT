@@ -2,20 +2,18 @@ import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Bell, User, Search, Plus, Info, Clock, CheckCircle, LogOut, Laptop, Users, Cpu, Phone, Award, Map } from "lucide-react";
 import { LayoutDashboard, Ticket, BookOpen, BarChart2 } from "lucide-react";
-import { initializeApp } from "firebase/app";
 import Chatbot from './chatbot';
 import { useMemo } from "react";
 import { useRef } from "react";
+import { db, auth } from './firebase';
 
 import { 
-  getAuth, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut,
   onAuthStateChanged
 } from "firebase/auth";
 import { 
-  getFirestore, 
   collection, 
   addDoc, 
   getDocs, 
@@ -24,7 +22,8 @@ import {
   doc,
   updateDoc,
   orderBy,
-  Timestamp
+  Timestamp,
+  onSnapshot
 } from "firebase/firestore";
 import { 
   Menu, 
@@ -34,22 +33,6 @@ import {
   Layout,
   FilePlus,
 } from "lucide-react";
-
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyBBqvva2cJ6wy8ssrP76Vgh5H9wZNLATWE",
-  authDomain: "ithelpdesk-ebf1e.firebaseapp.com",
-  projectId: "ithelpdesk-ebf1e",
-  storageBucket: "ithelpdesk-ebf1e.firebasestorage.app",
-  messagingSenderId: "163734375056",
-  appId: "1:163734375056:web:38a2e670015e6e73eb2615",
-  measurementId: "G-QYX1WNLZ3C"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
 
 const floorConfig = {
   S1: {
@@ -178,12 +161,12 @@ function useOfficeLayout(config) {
 export default function ITHelpDesk() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [language, setLanguage] = useState("English");
-  const [tickets, setTickets] = useState([]);
+  const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredTickets, setFilteredTickets] = useState([]);
+  const [filteredIssues, setFilteredIssues] = useState([]);
   const [filterStatus, setFilterStatus] = useState("All");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -206,8 +189,31 @@ export default function ITHelpDesk() {
     priority: "Medium",
     department: "IT",
     systemId: "",
-    floor: "S1" // Add floor to the ticket state
+    floor: "S1", // Add floor to the ticket state
+    type: "Hardware", // Add type to the ticket state, default to Hardware
+    building: "Building 1" // Add building to the ticket state, default to Building 1
   });
+
+  // Define mapping between buildings and floors (copy from AdminDashboard, or ideally share)
+  const buildingFloorMap = {
+    'Building 1': ['S1', 'S2'],
+    'Building 2': ['F1', 'F2', 'F3'],
+    'Building 3': ['G1'],
+    // Removed Building 4 and 5
+  };
+
+  // State for floors available based on selected building in the form
+  const [availableFormFloors, setAvailableFormFloors] = useState(buildingFloorMap[newTicket.building] || []);
+
+  // Update available form floors when the selected building in the form changes
+  useEffect(() => {
+    const floorsForBuilding = buildingFloorMap[newTicket.building] || [];
+    setAvailableFormFloors(floorsForBuilding);
+    // Reset floor selection if the current floor is not available in the new building
+    if (!floorsForBuilding.includes(newTicket.floor)) {
+      setNewTicket(prev => ({ ...prev, floor: floorsForBuilding[0] || '' }));
+    }
+  }, [newTicket.building]);
 
   // Helper to get all device IDs for a floor (open office + cabins)
   const getDevicesForFloor = (floor) => {
@@ -230,10 +236,10 @@ export default function ITHelpDesk() {
       setIsInitialized(true); // Mark as initialized once we have auth state
       
       if (currentUser) {
-        fetchTickets();
+        // Real-time updates will be handled by the other useEffect
       } else {
-        setTickets([]);
-        setFilteredTickets([]);
+        setIssues([]);
+        setFilteredIssues([]);
         setLoading(false);
       }
     });
@@ -244,7 +250,89 @@ export default function ITHelpDesk() {
   // Fetch tickets when user changes or actively requested
   useEffect(() => {
     if (user && isInitialized) {
-      fetchTickets();
+      // Set up real-time listener for tickets
+      let queryRef;
+      
+      if (user.email.includes("admin")) {
+        // Admin sees all issues
+        queryRef = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
+      } else {
+        // Regular users see only their issues - ADD BUILDING FILTER HERE
+        // IMPORTANT: The 'user' object needs a 'building' property for this filter to work.
+        // Ensure user building is saved during registration/login and included in the user object.
+        if (user.building) {
+          queryRef = query(
+            collection(db, "tickets"), 
+            where("createdBy", "==", user.uid),
+            where("building", "==", user.building), // Filter by user's building
+            orderBy("createdAt", "desc")
+          );
+        } else {
+          // If user building is not available, fetch only issues created by the user
+          // (without building filter, but this might show tickets from other buildings
+          // if user created them there and floor names are duplicated)
+          console.warn("User building not found. Fetching tickets only by user ID. Filtering by building will not work.");
+          queryRef = query(
+            collection(db, "tickets"), 
+            where("createdBy", "==", user.uid),
+            orderBy("createdAt", "desc")
+          );
+        }
+      }
+      
+      const unsubscribe = onSnapshot(queryRef, (querySnapshot) => {
+        console.log("Real-time update received");
+        const ticketsData = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          let createdAt;
+          try {
+            // Handle Firestore Timestamp
+            if (data.createdAt?.toDate) {
+              createdAt = data.createdAt.toDate().toLocaleString();
+            }
+            // Handle string date
+            else if (typeof data.createdAt === 'string') {
+              createdAt = new Date(data.createdAt).toLocaleString();
+            }
+            // Handle number timestamp
+            else if (typeof data.createdAt === 'number') {
+              createdAt = new Date(data.createdAt).toLocaleString();
+            }
+            // Handle Date object
+            else if (data.createdAt instanceof Date) {
+              createdAt = data.createdAt.toLocaleString();
+            }
+            // If no valid date found, use current date
+            else {
+              console.warn("Invalid date format for issue:", doc.id);
+              createdAt = new Date().toLocaleString();
+            }
+          } catch (err) {
+            console.error("Error converting date for issue:", doc.id, err);
+            createdAt = new Date().toLocaleString();
+          }
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: createdAt
+          };
+        });
+        
+        console.log("Issues loaded:", ticketsData.length);
+        setIssues(ticketsData);
+        setFilteredIssues(ticketsData); // Initialize filtered issues
+        setError(null);
+        setLoading(false);
+      }, (error) => {
+        console.error("Error in real-time listener:", error);
+        setError("Failed to load issues: " + error.message);
+        setIssues([]);
+        setFilteredIssues([]);
+        setLoading(false);
+      });
+      
+      // Cleanup subscription on unmount
+      return () => unsubscribe();
     }
   }, [user, isInitialized]);
 
@@ -296,88 +384,32 @@ export default function ITHelpDesk() {
     }
   };
 
-  // Fetch tickets from Firestore
-  const fetchTickets = async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-    try {
-      setLoading(true);
-      setError(null); // Clear any previous errors
-      console.log("Fetching tickets for user:", user.email);
-      
-      let querySnapshot;
-      
-      if (user.email.includes("admin")) {
-        // Admin sees all tickets
-        console.log("Admin user detected, fetching all tickets");
-        querySnapshot = await getDocs(
-          query(collection(db, "tickets"), orderBy("createdAt", "desc"))
-        );
-      } else {
-        // Regular users see only their tickets
-        console.log("Regular user detected, fetching user tickets");
-        querySnapshot = await getDocs(
-          query(
-            collection(db, "tickets"), 
-            where("createdBy", "==", user.uid),
-            orderBy("createdAt", "desc")
-          )
-        );
-      }
-      
-      console.log("Query executed, documents count:", querySnapshot.docs.length);
-      
-      const ticketsData = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          // Convert Firestore Timestamp to JS Date if needed
-          createdAt: data.createdAt?.toDate().toLocaleString() || 'Unknown'
-        };
-      });
-      
-      console.log("Tickets loaded:", ticketsData.length);
-      setTickets(ticketsData);
-      setFilteredTickets(ticketsData); // Initialize filtered tickets
-      setError(null);
-    } catch (err) {
-      console.error("Error fetching tickets:", err);
-      setError("Failed to load tickets: " + err.message);
-      setTickets([]);
-      setFilteredTickets([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Apply search and filters
   useEffect(() => {
-    if (tickets.length > 0) {
-      let results = [...tickets];
+    if (issues.length > 0) {
+      let results = [...issues];
       
       // Apply search
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        results = results.filter(ticket => 
-          ticket.title?.toLowerCase().includes(query) || 
-          ticket.description?.toLowerCase().includes(query) ||
-          ticket.department?.toLowerCase().includes(query)
+        results = results.filter(issue => 
+          issue.title?.toLowerCase().includes(query) || 
+          issue.description?.toLowerCase().includes(query) ||
+          issue.department?.toLowerCase().includes(query)
         );
       }
       
       // Apply status filter
       if (filterStatus !== "All") {
-        results = results.filter(ticket => ticket.status === filterStatus);
+        const lowerCaseFilterStatus = filterStatus.toLowerCase();
+        results = results.filter(issue => issue.status?.toLowerCase() === lowerCaseFilterStatus);
       }
       
-      setFilteredTickets(results);
+      setFilteredIssues(results);
     } else {
-      setFilteredTickets([]);
+      setFilteredIssues([]);
     }
-  }, [searchQuery, filterStatus, tickets]);
+  }, [searchQuery, filterStatus, issues]);
 
   // Mock data for tickets by priority - based on actual data now
   const getPriorityData = () => {
@@ -387,9 +419,9 @@ export default function ITHelpDesk() {
       "High": 0
     };
     
-    tickets.forEach(ticket => {
-      if (priorityCounts.hasOwnProperty(ticket.priority)) {
-        priorityCounts[ticket.priority]++;
+    issues.forEach(issue => {
+      if (priorityCounts.hasOwnProperty(issue.priority)) {
+        priorityCounts[issue.priority]++;
       }
     });
     
@@ -403,11 +435,11 @@ export default function ITHelpDesk() {
   const getDepartmentData = () => {
     const deptCounts = {};
     
-    tickets.forEach(ticket => {
-      if (!deptCounts[ticket.department]) {
-        deptCounts[ticket.department] = 0;
+    issues.forEach(issue => {
+      if (!deptCounts[issue.department]) {
+        deptCounts[issue.department] = 0;
       }
-      deptCounts[ticket.department]++;
+      deptCounts[issue.department]++;
     });
     
     return Object.keys(deptCounts).map(key => ({
@@ -417,7 +449,7 @@ export default function ITHelpDesk() {
   };
 
   const getStatusCount = (status) => {
-    return tickets.filter(ticket => ticket.status === status).length;
+    return issues.filter(issue => issue.status?.toLowerCase() === status.toLowerCase()).length;
   };
 
   // Handle form input changes
@@ -444,7 +476,7 @@ export default function ITHelpDesk() {
     e.preventDefault();
     
     if (!user) {
-      setError("You must be logged in to create a ticket");
+      setError("You must be logged in to create an issue");
       return;
     }
     
@@ -457,11 +489,12 @@ export default function ITHelpDesk() {
         createdBy: user.uid,
         createdAt: Timestamp.now(),
         userEmail: user.email,
-        floor: selectedFloor // Add the current floor
+        floor: newTicket.floor, // Use the floor from newTicket state
+        building: newTicket.building // Add the building from newTicket state
       };
       
       await addDoc(collection(db, "tickets"), ticketData);
-      console.log("Ticket created successfully");
+      console.log("Issue created successfully");
       
       // Reset form
       setNewTicket({
@@ -474,13 +507,13 @@ export default function ITHelpDesk() {
       });
       
       // Fetch tickets again to update the list
-      await fetchTickets();
+      // onSnapshot listener will handle updates automatically
       
-      // Navigate to tickets tab
-      setActiveTab("tickets");
+      // Navigate to issues tab
+      setActiveTab("issues");
     } catch (err) {
-      console.error("Error creating ticket:", err);
-      setError("Failed to create ticket: " + err.message);
+      console.error("Error creating issue:", err);
+      setError("Failed to create issue: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -495,13 +528,13 @@ export default function ITHelpDesk() {
         status: newStatus
       });
       
-      console.log("Ticket status updated successfully");
+      console.log("Issue status updated successfully");
       
-      // Refresh tickets list
-      await fetchTickets();
+      // Refresh issues list
+      // onSnapshot listener will handle updates automatically
     } catch (err) {
-      console.error("Error updating ticket:", err);
-      setError("Failed to update ticket: " + err.message);
+      console.error("Error updating issue:", err);
+      setError("Failed to update issue: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -513,15 +546,15 @@ export default function ITHelpDesk() {
       case "createTicket":
         setActiveTab("createTicket");
         break;
-      case "viewAllTickets":
-        setActiveTab("tickets");
+      case "viewAllIssues":
+        setActiveTab("issues");
         break;
       case "viewReports":
         setActiveTab("analytics");
         break;
-      case "resolvedTickets":
+      case "resolvedIssues":
         setFilterStatus("Resolved");
-        setActiveTab("tickets");
+        setActiveTab("issues");
         break;
       default:
         break;
@@ -544,7 +577,8 @@ export default function ITHelpDesk() {
 
   // Manual refresh handler
   const handleRefreshTickets = () => {
-    fetchTickets();
+    // No need for manual refresh as we're using real-time updates
+    console.log("Real-time updates are active, no manual refresh needed");
   };
 
   // SVG Background
@@ -589,23 +623,23 @@ export default function ITHelpDesk() {
   // Render login form
   const renderLoginForm = () => {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <SvgBackground />
-        <div className="max-w-md w-full bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-8">
-          <h2 className="text-2xl font-bold text-center mb-6">
+      <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/50 via-gray-900/50 to-purple-900/50 backdrop-blur-3xl"></div>
+        <div className="max-w-md w-full bg-gray-900/90 backdrop-blur-xl rounded-xl shadow-2xl p-8 border border-purple-500/20 relative z-10">
+          <h2 className="text-3xl font-bold text-center mb-8 text-white bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
             {language === "English" ? "IT Help Desk Login" : "आयटी हेल्प डेस्क लॉगिन"}
           </h2>
           
-          <div className="flex justify-center mb-6">
-            <div className="flex border border-gray-300 rounded-md">
+          <div className="flex justify-center mb-8">
+            <div className="flex border border-purple-500/30 rounded-lg overflow-hidden">
               <button 
-                className={`px-4 py-2 ${authMode === 'login' ? 'bg-purple-500 text-white' : 'bg-white/70'}`}
+                className={`px-6 py-3 ${authMode === 'login' ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
                 onClick={() => setAuthMode('login')}
               >
                 {language === "English" ? "Login" : "लॉगिन"}
               </button>
               <button 
-                className={`px-4 py-2 ${authMode === 'register' ? 'bg-purple-500 text-white' : 'bg-white/70'}`}
+                className={`px-6 py-3 ${authMode === 'register' ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
                 onClick={() => setAuthMode('register')}
               >
                 {language === "English" ? "Register" : "नोंदणी"}
@@ -614,106 +648,54 @@ export default function ITHelpDesk() {
           </div>
           
           {authError && (
-            <div className="mb-4 p-2 bg-red-100 text-red-700 rounded">
+            <div className="mb-6 p-4 bg-red-900/50 text-red-300 rounded-lg border border-red-700/50 backdrop-blur-sm">
               {authError}
             </div>
           )}
           
-          {authMode === 'login' ? (
-            <form onSubmit={handleLogin}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1" htmlFor="email">
-                  {language === "English" ? "Email" : "ईमेल"}
-                </label>
-                <input
-                  id="email"
-                  type="email" 
-                  className="w-full border rounded-md p-2"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm font-medium mb-1" htmlFor="password">
-                  {language === "English" ? "Password" : "पासवर्ड"}
-                </label>
-                <input 
-                  id="password"
-                  type="password" 
-                  className="w-full border rounded-md p-2"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-purple-500 text-white p-2 rounded-md hover:bg-purple-600"
-                disabled={loading}
-              >
-                {loading ? (language === "English" ? "Signing In..." : "साइन इन करत आहे...") : 
-                 (language === "English" ? "Sign In" : "साइन इन")}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleRegister}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1" htmlFor="name">
-                  {language === "English" ? "Full Name" : "पूर्ण नाव"}
-                </label>
-                <input
-                  id="name"
-                  type="text" 
-                  className="w-full border rounded-md p-2"
-                  value={registerName}
-                  onChange={(e) => setRegisterName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1" htmlFor="register-email">
-                  {language === "English" ? "Email" : "ईमेल"}
-                </label>
-                <input
-                  id="register-email" 
-                  type="email" 
-                  className="w-full border rounded-md p-2"
-                  value={registerEmail}
-                  onChange={(e) => setRegisterEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm font-medium mb-1" htmlFor="register-password">
-                  {language === "English" ? "Password" : "पासवर्ड"}
-                </label>
-                <input
-                  id="register-password" 
-                  type="password" 
-                  className="w-full border rounded-md p-2"
-                  value={registerPassword}
-                  onChange={(e) => setRegisterPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-purple-500 text-white p-2 rounded-md hover:bg-purple-600"
-                disabled={loading}
-              >
-                {loading ? (language === "English" ? "Creating Account..." : "खाते तयार करत आहे...") : 
-                 (language === "English" ? "Create Account" : "खाते तयार करा")}
-              </button>
-            </form>
-          )}
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-300" htmlFor="email">
+                {language === "English" ? "Email" : "ईमेल"}
+              </label>
+              <input
+                id="email"
+                type="email" 
+                className="w-full bg-transparent border border-purple-500/20 rounded-lg p-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-300" htmlFor="password">
+                {language === "English" ? "Password" : "पासवर्ड"}
+              </label>
+              <input 
+                id="password"
+                type="password" 
+                className="w-full bg-transparent border border-purple-500/20 rounded-lg p-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-purple-600 via-purple-700 to-purple-600 text-white p-3 rounded-lg hover:from-purple-700 hover:via-purple-800 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-purple-500/25"
+              disabled={loading}
+            >
+              {loading ? (language === "English" ? "Signing In..." : "साइन इन करत आहे...") : 
+               (language === "English" ? "Sign In" : "साइन इन")}
+            </button>
+          </form>
           
-          <div className="mt-4">
-            <label className="block text-sm font-medium mb-1">
+          <div className="mt-8">
+            <label className="block text-sm font-medium mb-2 text-gray-300">
               {language === "English" ? "Language" : "भाषा"}
             </label>
             <select 
-              className="w-full border rounded-md p-2"
+              className="w-full bg-transparent border border-purple-500/20 rounded-lg p-3 text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
             >
@@ -732,7 +714,7 @@ export default function ITHelpDesk() {
     }
     
     if (loading) {
-      return <div className="p-6 text-center">Loading dashboard data...</div>;
+      return <div className="p-6 text-center">Loading dashboard issues...</div>;
     }
     
     if (error) {
@@ -769,18 +751,18 @@ export default function ITHelpDesk() {
               onClick={() => setActiveTab("createTicket")}
             >
               <Plus size={20} />
-              {language === "English" ? "Create New Ticket" : "नवीन तिकीट तयार करा"}
+              {language === "English" ? "Create New Issue" : "नवीन समस्या तयार करा"}
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-gray-500 mb-2">{language === "English" ? "Total Tickets" : "एकूण तिकिटे"}</h2>
-            <p className="text-3xl md:text-4xl font-bold text-purple-500">{tickets.length}</p>
+            <h2 className="text-gray-500 mb-2">{language === "English" ? "Total Issues" : "एकूण समस्या"}</h2>
+            <p className="text-3xl md:text-4xl font-bold text-purple-500">{issues.length}</p>
           </div>
           <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-gray-500 mb-2">{language === "English" ? "Open Tickets" : "खुले तिकिटे"}</h2>
+            <h2 className="text-gray-500 mb-2">{language === "English" ? "Open Issues" : "खुले समस्या"}</h2>
             <p className="text-3xl md:text-4xl font-bold text-red-500">{getStatusCount("Open")}</p>
           </div>
           <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
@@ -788,131 +770,70 @@ export default function ITHelpDesk() {
             <p className="text-3xl md:text-4xl font-bold text-yellow-500">{getStatusCount("InProgress")}</p>
           </div>
           <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-gray-500 mb-2">{language === "English" ? "Resolved" : "निराकरण केलेले"}</h2>
+            <h2 className="text-gray-500 mb-2">{language === "English" ? "Resolved Issues" : "निराकरण केलेले समस्या"}</h2>
             <p className="text-3xl md:text-4xl font-bold text-green-500">{getStatusCount("Resolved")}</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow lg:col-span-3">
-            <h2 className="text-lg font-medium mb-4">{language === "English" ? "Recent Tickets" : "अलीकडील तिकिटे"}</h2>
-            {tickets.length === 0 ? (
+            <h2 className="text-lg font-medium mb-4">{language === "English" ? "Recent Issues" : "अलीकडील समस्या"}</h2>
+            {issues.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                {language === "English" ? "No tickets found. Create your first ticket!" : "कोणतीही तिकिटे सापडली नाहीत. आपले पहिले तिकीट तयार करा!"}
+                {language === "English" ? "No issues found. Create your first issue!" : "कोणत्याही समस्या सापडल्या नाहीत. आपली पहिली समस्या तयार करा!"}
               </div>
             ) : (
               <div className="space-y-4">
-                {tickets.slice(0, 2).map(ticket => (
-                  <div key={ticket.id} className="border-b pb-4">
+                {issues.slice(0, 2).map(issue => (
+                  <div key={issue.id} className="border-b pb-4">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                       <div className="flex-1">
-                        <h3 className="font-medium">{ticket.title}</h3>
-                        <p className="text-gray-500 text-sm">{ticket.description?.substring(0, 50)}...</p>
+                        <h3 className="font-medium">{issue.title}</h3>
+                        <p className="text-gray-500 text-sm">{issue.description?.substring(0, 50)}...</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <span className={`px-2 py-1 text-xs rounded-md ${
-                          ticket.status === "Open" ? "bg-red-100 text-red-800" :
-                          ticket.status === "InProgress" ? "bg-yellow-100 text-yellow-800" :
+                          issue.status === "Open" ? "bg-red-100 text-red-800" :
+                          issue.status === "InProgress" ? "bg-yellow-100 text-yellow-800" :
                           "bg-green-100 text-green-800"
                         }`}>
-                          {ticket.status === "InProgress" 
+                          {issue.status === "InProgress" 
                             ? (language === "English" ? "In Progress" : "प्रगतीपथावर")
-                            : (language === "English" ? ticket.status : (ticket.status === "Open" ? "खुले" : "निराकरण केलेले"))}
+                            : (language === "English" ? issue.status : (issue.status === "Open" ? "खुले" : "निराकरण केलेले"))}
                         </span>
                         <span className={`px-2 py-1 text-xs rounded-md ${
-                          ticket.priority === "Low" ? "bg-gray-100 text-gray-800" :
-                          ticket.priority === "Low" ? "bg-gray-100 text-gray-800" :
-                          ticket.priority === "Medium" ? "bg-blue-100 text-blue-800" :
+                          issue.priority === "Low" ? "bg-gray-100 text-gray-800" :
+                          issue.priority === "Low" ? "bg-gray-100 text-gray-800" :
+                          issue.priority === "Medium" ? "bg-blue-100 text-blue-800" :
                           "bg-purple-100 text-purple-800"
                         }`}>
-                          {language === "English" ? ticket.priority : 
-                            (ticket.priority === "Low" ? "कमी" : 
-                             ticket.priority === "Medium" ? "मध्यम" : "उच्च")}
+                          {language === "English" ? issue.priority : 
+                            (issue.priority === "Low" ? "कमी" : 
+                             issue.priority === "Medium" ? "मध्यम" : "उच्च")}
                         </span>
                       </div>
                     </div>
                     <div className="mt-2 flex justify-between items-center text-xs text-gray-500">
-                      <span>{ticket.createdAt}</span>
-                      <span>{ticket.department}</span>
+                      <span>{issue.createdAt}</span>
+                       <span className="flex items-center space-x-2">
+                          <span>{issue.department}</span>
+                           {issue.assignedTo && (
+                           <span className="text-purple-600 font-medium text-xs sm:text-sm">
+                              ({language === "English" ? "Handler" : "हँडलर"}: {issue.assignedTo})
+                           </span>
+                         )}
+                       </span>
                     </div>
                   </div>
                 ))}
                 <button 
-                  onClick={() => setActiveTab("tickets")} 
+                  onClick={() => setActiveTab("issues")} 
                   className="text-purple-600 hover:text-purple-800 text-sm font-medium"
                 >
-                  {language === "English" ? "View All Tickets" : "सर्व तिकिटे पहा"} →
+                  {language === "English" ? "View All Issues" : "सर्व समस्या पहा"} →
                 </button>
               </div>
             )}
-          </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-lg font-medium mb-4">{language === "English" ? "Quick Actions" : "जलद कृती"}</h2>
-            <div className="space-y-2">
-              <button 
-                onClick={() => handleQuickAction("createTicket")}
-                className="w-full text-left px-4 py-2 rounded-md hover:bg-purple-50 flex items-center gap-2"
-              >
-                <Plus size={18} />
-                <span>{language === "English" ? "Create Ticket" : "तिकीट तयार करा"}</span>
-              </button>
-              <button 
-                onClick={() => handleQuickAction("viewAllTickets")}
-                className="w-full text-left px-4 py-2 rounded-md hover:bg-purple-50 flex items-center gap-2"
-              >
-                <Ticket size={18} />
-                <span>{language === "English" ? "View All Tickets" : "सर्व तिकिटे पहा"}</span>
-              </button>
-              <button 
-                onClick={() => handleQuickAction("resolvedTickets")}
-                className="w-full text-left px-4 py-2 rounded-md hover:bg-purple-50 flex items-center gap-2"
-              >
-                <CheckCircle size={18} />
-                <span>{language === "English" ? "Resolved Tickets" : "निराकरण केलेली तिकिटे"}</span>
-              </button>
-              <button 
-                onClick={() => handleQuickAction("viewReports")}
-                className="w-full text-left px-4 py-2 rounded-md hover:bg-purple-50 flex items-center gap-2"
-              >
-                <BarChart2 size={18} />
-                <span>{language === "English" ? "View Reports" : "अहवाल पहा"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-          {/* Tickets by Priority */}
-          <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-lg font-medium mb-4">{language === "English" ? "Tickets by Priority" : "प्राधान्यानुसार तिकिटे"}</h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={getPriorityData()}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          
-          {/* Tickets by Department */}
-          <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-lg font-medium mb-4">{language === "English" ? "Tickets by Department" : "विभागानुसार तिकिटे"}</h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={getDepartmentData()}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#82ca9d" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
           </div>
         </div>
       </div>
@@ -921,7 +842,7 @@ export default function ITHelpDesk() {
 
   const renderTicketsList = () => {
     if (loading) {
-      return <div className="p-6 text-center">Loading tickets...</div>;
+      return <div className="p-6 text-center">Loading issues...</div>;
     }
     
     if (error) {
@@ -941,7 +862,7 @@ export default function ITHelpDesk() {
       <div className="p-4 md:p-6">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 md:mb-8 gap-4">
           <h1 className="text-xl md:text-2xl font-semibold">
-            {language === "English" ? "All Tickets" : "सर्व तिकिटे"}
+            {language === "English" ? "All Issues" : "सर्व समस्या"}
           </h1>
           <div className="flex flex-col md:flex-row gap-2 md:items-center w-full md:w-auto">
             <div className="relative w-full md:w-64">
@@ -951,7 +872,7 @@ export default function ITHelpDesk() {
               <input
                 type="text"
                 className="pl-10 pr-4 py-2 w-full border rounded-md"
-                placeholder={language === "English" ? "Search tickets..." : "तिकिटे शोधा..."}
+                placeholder={language === "English" ? "Search issues..." : "समस्या शोधा..."}
                 value={searchQuery}
                 onChange={handleSearchChange}
               />
@@ -971,21 +892,21 @@ export default function ITHelpDesk() {
               onClick={() => setActiveTab("createTicket")}
             >
               <Plus size={20} />
-              {language === "English" ? "New Ticket" : "नवीन तिकीट"}
+              {language === "English" ? "New Issue" : "नवीन समस्या"}
             </button>
           </div>
         </div>
 
-        {filteredTickets.length === 0 ? (
+        {filteredIssues.length === 0 ? (
           <div className="bg-white/80 backdrop-blur-sm rounded-md shadow p-8 text-center">
             <div className="text-gray-500 mb-4">
-              {language === "English" ? "No tickets found" : "कोणतीही तिकिटे सापडली नाहीत"}
+              {language === "English" ? "No issues found" : "कोणत्याही समस्या सापडल्या नाहीत"}
             </div>
             <button 
               onClick={() => setActiveTab("createTicket")}
               className="bg-purple-500 text-white px-4 py-2 rounded-md"
             >
-              {language === "English" ? "Create your first ticket" : "आपले पहिले तिकीट तयार करा"}
+              {language === "English" ? "Create your first issue" : "आपली पहिली समस्या तयार करा"}
             </button>
           </div>
         ) : (
@@ -1006,71 +927,71 @@ export default function ITHelpDesk() {
                     <th className="py-3 px-4 text-left font-medium text-gray-500">
                       {language === "English" ? "Status" : "स्थिती"}
                     </th>
-                    <th className="py-3 px-4 text-left font-medium text-gray-500">
-                      {language === "English" ? "Actions" : "कृती"}
+                    <th className="py-3 px-4 text-left font-medium text-gray-500 hidden md:table-cell">
+                      {language === "English" ? "Handler" : "हँडलर"}
+                    </th>
+                    <th className="py-3 px-4 text-left font-medium text-gray-500 hidden md:table-cell">
+                      {language === "English" ? "Raised On" : "केव्हा दाखल केले"}
+                    </th>
+                    <th className="py-3 px-4 text-left font-medium text-gray-500 hidden md:table-cell">
+                      {language === "English" ? "Resolved On" : "केव्हा निराकरण केले"}
+                    </th>
+                    <th className="py-3 px-4 text-left font-medium text-gray-500 hidden md:table-cell">
+                      {language === "English" ? "Remark" : "शेरा"}
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredTickets.map((ticket) => (
-                    <tr key={ticket.id} className="hover:bg-gray-50">
+                  {filteredIssues.map((issue) => (
+                    <tr key={issue.id} className="hover:bg-gray-50">
                       <td className="py-3 px-4">
                         <div>
-                          <div className="font-medium">{ticket.title}</div>
-                          <div className="text-sm text-gray-500 md:hidden">{ticket.department}</div>
-                          <div className="text-xs text-gray-400">{ticket.createdAt}</div>
+                          <div className="font-medium">{issue.title}</div>
+                          <div className="text-sm text-gray-500 md:hidden">{issue.department}</div>
+                          <div className="text-xs text-gray-400">{issue.createdAt}</div>
+                          {/* Display handler inline on small screens */}
+                          {issue.assignedTo && (
+                            <div className="text-xs text-gray-500 mt-1 md:hidden">
+                              {language === "English" ? "Handler" : "हँडलर"}: <span className="text-purple-600 font-medium">{issue.assignedTo}</span>
+                            </div>
+                          )}
                         </div>
                       </td>
-                      <td className="py-3 px-4 hidden md:table-cell">{ticket.department}</td>
+                      <td className="py-3 px-4 hidden md:table-cell">{issue.department}</td>
                       <td className="py-3 px-4 hidden md:table-cell">
                         <span className={`px-2 py-1 text-xs rounded-md ${
-                          ticket.priority === "Low" ? "bg-gray-100 text-gray-800" :
-                          ticket.priority === "Medium" ? "bg-blue-100 text-blue-800" :
+                          issue.priority === "Low" ? "bg-gray-100 text-gray-800" :
+                          issue.priority === "Medium" ? "bg-blue-100 text-blue-800" :
                           "bg-purple-100 text-purple-800"
                         }`}>
-                          {language === "English" ? ticket.priority : 
-                            (ticket.priority === "Low" ? "कमी" : 
-                             ticket.priority === "Medium" ? "मध्यम" : "उच्च")}
+                          {language === "English" ? issue.priority : 
+                            (issue.priority === "Low" ? "कमी" : 
+                             issue.priority === "Medium" ? "मध्यम" : "उच्च")}
                         </span>
                       </td>
                       <td className="py-3 px-4">
                         <span className={`px-2 py-1 text-xs rounded-md ${
-                          ticket.status === "Open" ? "bg-red-100 text-red-800" :
-                          ticket.status === "InProgress" ? "bg-yellow-100 text-yellow-800" :
+                          issue.status === "Open" ? "bg-red-100 text-red-800" :
+                          issue.status === "InProgress" ? "bg-yellow-100 text-yellow-800" :
                           "bg-green-100 text-green-800"
                         }`}>
-                          {ticket.status === "InProgress" 
+                          {issue.status === "InProgress" 
                             ? (language === "English" ? "In Progress" : "प्रगतीपथावर")
-                            : (language === "English" ? ticket.status : (ticket.status === "Open" ? "खुले" : "निराकरण केलेले"))}
+                            : (language === "English" ? issue.status : (issue.status === "Open" ? "खुले" : "निराकरण केलेले"))}
                         </span>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex space-x-2">
-                          {ticket.status === "Open" && (
-                            <button 
-                              onClick={() => handleStatusChange(ticket.id, "InProgress")}
-                              className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-md hover:bg-yellow-200"
-                            >
-                              {language === "English" ? "Start" : "सुरू करा"}
-                            </button>
-                          )}
-                          {ticket.status === "InProgress" && (
-                            <button 
-                              onClick={() => handleStatusChange(ticket.id, "Resolved")}
-                              className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-md hover:bg-green-200"
-                            >
-                              {language === "English" ? "Resolve" : "निराकरण करा"}
-                            </button>
-                          )}
-                          {ticket.status === "Resolved" && (
-                            <button 
-                              onClick={() => handleStatusChange(ticket.id, "Open")}
-                              className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-md hover:bg-purple-200"
-                            >
-                              {language === "English" ? "Reopen" : "पुन्हा सुरू करा"}
-                            </button>
-                          )}
-                        </div>
+                      <td className="py-3 px-4 hidden md:table-cell">
+                        {/* Display handler in dedicated column on larger screens */}
+                        <span className="hidden md:inline">{issue.assignedTo || ''}</span>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-700 hidden md:table-cell whitespace-nowrap">
+                        {issue.createdAt || 'N/A'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-700 hidden md:table-cell whitespace-nowrap">
+                        {issue.resolvedAt ? new Date(issue.resolvedAt).toLocaleString() : ''}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-700 hidden md:table-cell whitespace-nowrap">
+                        {issue.status === 'Resolved' ? (language === "English" ? "Solved" : "निराकरण केलेले") : ''}
                       </td>
                     </tr>
                   ))}
@@ -1088,7 +1009,7 @@ export default function ITHelpDesk() {
       <div className="p-4 md:p-6">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 md:mb-8">
           <h1 className="text-xl md:text-2xl font-semibold">
-            {language === "English" ? "Create New Ticket" : "नवीन तिकीट तयार करा"}
+            {language === "English" ? "Create New Issue" : "नवीन समस्या तयार करा"}
           </h1>
         </div>
 
@@ -1103,7 +1024,7 @@ export default function ITHelpDesk() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium mb-1" htmlFor="title">
-                  {language === "English" ? "Ticket Title" : "तिकीट शीर्षक"}
+                  {language === "English" ? "Issue Title" : "समस्या शीर्षक"}
                 </label>
                 <input
                   type="text"
@@ -1116,6 +1037,26 @@ export default function ITHelpDesk() {
                 />
               </div>
               
+              {/* New Building Field */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="building">
+                  {language === "English" ? "Building" : "इमारत"}
+                </label>
+                <select
+                  id="building"
+                  name="building"
+                  className="w-full border rounded-md p-2"
+                  value={newTicket.building}
+                  onChange={handleInputChange}
+                  required
+                >
+                  <option value="Building 1">Building 1</option>
+                  <option value="Building 2">Building 2</option>
+                  <option value="Building 3">Building 3</option>
+                  {/* Removed Building 4 and 5 options */}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1" htmlFor="floor">
                   {language === "English" ? "Floor" : "मजला"}
@@ -1128,10 +1069,9 @@ export default function ITHelpDesk() {
                   onChange={handleInputChange}
                   required
                 >
-                  <option value="S1">S1</option>
-                  <option value="S2">S2</option>
-                  <option value="S3">S3</option>
-                  <option value="S4">S4</option>
+                  {availableFormFloors.map(floor => (
+                    <option key={floor} value={floor}>{floor}</option>
+                  ))}
                 </select>
               </div>
               
@@ -1151,6 +1091,26 @@ export default function ITHelpDesk() {
                 />
               </div>
               
+               {/* New field for Issue Type */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="type">
+                  {language === "English" ? "Issue Type" : "समस्येचा प्रकार"}
+                </label>
+                <select
+                  id="type"
+                  name="type"
+                  className="w-full border rounded-md p-2"
+                  value={newTicket.type}
+                  onChange={handleInputChange}
+                  required
+                >
+                  <option value="Hardware">{language === "English" ? "Hardware" : "हार्डवेअर"}</option>
+                  <option value="Software">{language === "English" ? "Software" : "सॉफ्टवेअर"}</option>
+                  <option value="Network">{language === "English" ? "Network" : "नेटवर्क"}</option>
+                  <option value="Other">{language === "English" ? "Other" : "इतर"}</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium mb-1" htmlFor="department">
                   {language === "English" ? "Department" : "विभाग"}
@@ -1232,114 +1192,10 @@ export default function ITHelpDesk() {
               >
                 {loading ? 
                   (language === "English" ? "Creating..." : "तयार करत आहे...") : 
-                  (language === "English" ? "Create Ticket" : "तिकीट तयार करा")}
+                  (language === "English" ? "Create Issue" : "समस्या तयार करा")}
               </button>
             </div>
           </form>
-        </div>
-      </div>
-    );
-  };
-
-  const renderAnalytics = () => {
-    return (
-      <div className="p-4 md:p-6">
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 md:mb-8">
-          <h1 className="text-xl md:text-2xl font-semibold">
-            {language === "English" ? "Analytics & Reports" : "अनॅलिटिक्स आणि अहवाल"}
-          </h1>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Tickets by Priority */}
-          <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-lg font-medium mb-4">{language === "English" ? "Tickets by Priority" : "प्राधान्यानुसार तिकिटे"}</h2>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={getPriorityData()}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          
-          {/* Tickets by Department */}
-          <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-lg font-medium mb-4">{language === "English" ? "Tickets by Department" : "विभागानुसार तिकिटे"}</h2>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={getDepartmentData()}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#82ca9d" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <div className="bg-white/80 backdrop-blur-sm p-4 rounded-md shadow">
-            <h2 className="text-lg font-medium mb-4">{language === "English" ? "Ticket Status Summary" : "तिकीट स्थिती सारांश"}</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="py-3 px-4 text-left">{language === "English" ? "Status" : "स्थिती"}</th>
-                    <th className="py-3 px-4 text-left">{language === "English" ? "Count" : "संख्या"}</th>
-                    <th className="py-3 px-4 text-left">{language === "English" ? "Percentage" : "टक्केवारी"}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-1 text-xs rounded-md bg-red-100 text-red-800">
-                        {language === "English" ? "Open" : "खुले"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">{getStatusCount("Open")}</td>
-                    <td className="py-3 px-4">
-                      {tickets.length > 0 ? 
-                        `${Math.round((getStatusCount("Open") / tickets.length) * 100)}%` : 
-                        "0%"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-1 text-xs rounded-md bg-yellow-100 text-yellow-800">
-                        {language === "English" ? "In Progress" : "प्रगतीपथावर"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">{getStatusCount("InProgress")}</td>
-                    <td className="py-3 px-4">
-                      {tickets.length > 0 ? 
-                        `${Math.round((getStatusCount("InProgress") / tickets.length) * 100)}%` : 
-                        "0%"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-1 text-xs rounded-md bg-green-100 text-green-800">
-                        {language === "English" ? "Resolved" : "निराकरण केलेले"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">{getStatusCount("Resolved")}</td>
-                    <td className="py-3 px-4">
-                      {tickets.length > 0 ? 
-                        `${Math.round((getStatusCount("Resolved") / tickets.length) * 100)}%` : 
-                        "0%"}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </div>
     );
@@ -1361,38 +1217,38 @@ export default function ITHelpDesk() {
               
               <div className="space-y-4">
                 <div>
-                  <h3 className="font-medium">{language === "English" ? "How do I create a ticket?" : "मी तिकीट कसे तयार करू?"}</h3>
+                  <h3 className="font-medium">{language === "English" ? "How do I create an issue?" : "मी समस्या कशी तयार करू?"}</h3>
                   <p className="text-gray-600 text-sm mt-1">
                     {language === "English" 
-                      ? "Click on the 'Create Ticket' button in the dashboard or navigation menu, fill out the form with your issue details, and submit." 
-                      : "डॅशबोर्ड किंवा नेव्हिगेशन मेनूमधील 'तिकीट तयार करा' बटणावर क्लिक करा, आपल्या समस्येचा तपशील सह फॉर्म भरा आणि सबमिट करा."}
+                      ? "Click on the 'Create Issue' button in the dashboard or navigation menu, fill out the form with your issue details, and submit." 
+                      : "डॅशबोर्ड किंवा नेव्हिगेशन मेनूमधील 'समस्या तयार करा' बटणावर क्लिक करा, आपल्या समस्येचा तपशील सह फॉर्म भरा आणि सबमिट करा."}
                   </p>
                 </div>
                 
                 <div>
-                  <h3 className="font-medium">{language === "English" ? "How are ticket priorities determined?" : "तिकीट प्राधान्य कसे निर्धारित केले जातात?"}</h3>
+                  <h3 className="font-medium">{language === "English" ? "How are issue priorities determined?" : "समस्या प्राधान्य कसे निर्धारित केले जातात?"}</h3>
                   <p className="text-gray-600 text-sm mt-1">
                     {language === "English" 
-                      ? "You can select the priority level when creating a ticket. Choose 'Low' for minor issues, 'Medium' for standard issues, and 'High' for urgent matters that require immediate attention." 
-                      : "तिकीट तयार करताना आपण प्राधान्य स्तर निवडू शकता. किरकोळ समस्यांसाठी 'कमी', मानक समस्यांसाठी 'मध्यम' आणि तात्काळ लक्ष देण्याची आवश्यकता असलेल्या तातडीच्या बाबींसाठी 'उच्च' निवडा."}
+                      ? "You can select the priority level when creating an issue. Choose 'Low' for minor issues, 'Medium' for standard issues, and 'High' for urgent matters that require immediate attention." 
+                      : "समस्या तयार करताना आपण प्राधान्य स्तर निवडू शकता. किरकोळ समस्यांसाठी 'कमी', मानक समस्यांसाठी 'मध्यम' आणि तात्काळ लक्ष देण्याची आवश्यकता असलेल्या तातडीच्या बाबींसाठी 'उच्च' निवडा."}
                   </p>
                 </div>
                 
                 <div>
-                  <h3 className="font-medium">{language === "English" ? "Who can see my tickets?" : "माझी तिकिटे कोण पाहू शकतो?"}</h3>
+                  <h3 className="font-medium">{language === "English" ? "Who can see my issues?" : "माझ्या समस्या कोण पाहू शकतो?"}</h3>
                   <p className="text-gray-600 text-sm mt-1">
                     {language === "English" 
-                      ? "Only you and the support staff can see your tickets. Administrators have access to all tickets in the system for management purposes." 
-                      : "फक्त आपण आणि सपोर्ट स्टाफ आपली तिकिटे पाहू शकतात. प्रशासकांना व्यवस्थापन उद्देशांसाठी सिस्टममधील सर्व तिकिटांचा प्रवेश आहे."}
+                      ? "Only you and the support staff can see your issues. Administrators have access to all issues in the system for management purposes." 
+                      : "फक्त आपण आणि सपोर्ट स्टाफ आपल्या समस्या पाहू शकतात. प्रशासकांना व्यवस्थापन उद्देशांसाठी सिस्टममधील सर्व समस्यांचा प्रवेश आहे."}
                   </p>
                 </div>
                 
                 <div>
-                  <h3 className="font-medium">{language === "English" ? "How do I check the status of my ticket?" : "मी माझ्या तिकीटची स्थिती कशी तपासू?"}</h3>
+                  <h3 className="font-medium">{language === "English" ? "How do I check the status of my issue?" : "मी माझ्या समस्याची स्थिती कशी तपासू?"}</h3>
                   <p className="text-gray-600 text-sm mt-1">
                     {language === "English" 
-                      ? "Go to the 'Tickets' tab to see all your tickets and their current status. Tickets are marked as 'Open', 'In Progress', or 'Resolved'." 
-                      : "'तिकिटे' टॅबवर जा आणि आपली सर्व तिकिटे आणि त्यांची वर्तमान स्थिती पहा. तिकिटे 'खुले', 'प्रगतीपथावर' किंवा 'निराकरण केलेले' म्हणून चिन्हांकित केली जातात."}
+                      ? "Go to the 'Issues' tab to see all your issues and their current status. Issues are marked as 'Open', 'In Progress', or 'Resolved'." 
+                      : "'समस्या' टॅबवर जा आणि आपली सर्व समस्या आणि त्यांची वर्तमान स्थिती पहा. समस्या 'खुले', 'प्रगतीपथावर' किंवा 'निराकरण केलेले' म्हणून चिन्हांकित केल्या जातात।"}
                   </p>
                 </div>
               </div>
@@ -1406,17 +1262,17 @@ export default function ITHelpDesk() {
                   <h3 className="font-medium">{language === "English" ? "Dashboard Navigation" : "डॅशबोर्ड नेव्हिगेशन"}</h3>
                   <p className="text-gray-600 text-sm mt-1">
                     {language === "English" 
-                      ? "The dashboard provides an overview of all your tickets, quick actions, and analytical charts. Use the sidebar to navigate between different sections of the application." 
-                      : "डॅशबोर्ड आपल्या सर्व तिकिटांचे, त्वरित कृती आणि विश्लेषणात्मक चार्टचे अवलोकन प्रदान करतो. अॅप्लिकेशनच्या विविध विभागांमध्ये नेव्हिगेट करण्यासाठी साइडबार वापरा."}
+                      ? "The dashboard provides an overview of all your issues, quick actions, and analytical charts. Use the sidebar to navigate between different sections of the application." 
+                      : "डॅशबोर्ड आपल्या सर्व समस्यांचे, त्वरित कृती आणि विश्लेषणात्मक चार्टचे अवलोकन प्रदान करतो. अॅप्लिकेशनच्या विविध विभागांमध्ये नेव्हिगेट करण्यासाठी साइडबार वापरा."}
                   </p>
                 </div>
                 
                 <div>
-                  <h3 className="font-medium">{language === "English" ? "Creating and Managing Tickets" : "तिकिटे तयार करणे आणि व्यवस्थापित करणे"}</h3>
+                  <h3 className="font-medium">{language === "English" ? "Creating and Managing Issues" : "समस्या तयार करणे आणि व्यवस्थापित करणे"}</h3>
                   <p className="text-gray-600 text-sm mt-1">
                     {language === "English" 
-                      ? "Create new tickets by clicking 'New Ticket', fill in the required fields, and submit. View all tickets in the 'Tickets' tab where you can also filter and search for specific tickets." 
-                      : "'नवीन तिकीट' वर क्लिक करून नवीन तिकिटे तयार करा, आवश्यक फील्ड भरा आणि सबमिट करा. 'तिकिटे' टॅबमध्ये सर्व तिकिटे पहा जिथे आपण विशिष्ट तिकिटांसाठी फिल्टर आणि शोध देखील करू शकता."}
+                      ? "Create new issues by clicking 'New Issue', fill in the required fields, and submit. View all issues in the 'Issues' tab where you can also filter and search for specific issues." 
+                      : "'नवीन समस्या' वर क्लिक करून नवीन समस्या तयार करा, आवश्यक फील्ड भरा आणि सबमिट करा. 'समस्या' टॅबमध्ये सर्व समस्या पहा जिथे आपण विशिष्ट समस्यांसाठी फिल्टर आणि शोध देखील करू शकता."}
                   </p>
                 </div>
               </div>
@@ -1549,28 +1405,21 @@ export default function ITHelpDesk() {
                 <span>{language === "English" ? "Dashboard" : "डॅशबोर्ड"}</span>
               </button>
               <button 
-                onClick={() => setActiveTab("tickets")} 
-                className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "tickets" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
+                onClick={() => setActiveTab("issues")} 
+                className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "issues" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
               >
                 <Ticket size={20} className="mr-3" />
-                <span>{language === "English" ? "Tickets" : "तिकिटे"}</span>
+                <span>{language === "English" ? "Issues" : "समस्या"}</span>
               </button>
               <button 
-                onClick={() => setActiveTab("createTicket")} 
+                onClick={() => setActiveTab("createTicket")}
                 className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "createTicket" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
               >
                 <FilePlus size={20} className="mr-3" />
-                <span>{language === "English" ? "Create Ticket" : "तिकीट तयार करा"}</span>
+                <span>{language === "English" ? "Raise Issue" : "समस्या वाढवा"}</span>
               </button>
               <button 
-                onClick={() => setActiveTab("analytics")} 
-                className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "analytics" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
-              >
-                <BarChart2 size={20} className="mr-3" />
-                <span>{language === "English" ? "Analytics" : "अनॅलिटिक्स"}</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab("help")} 
+                onClick={() => setActiveTab("help")}
                 className={`flex items-center px-3 py-2 w-full rounded-md ${activeTab === "help" ? "bg-purple-100 text-purple-800" : "text-gray-700 hover:bg-purple-50"}`}
               >
                 <HelpCircle size={20} className="mr-3" />
@@ -1592,9 +1441,8 @@ export default function ITHelpDesk() {
               </button>
               <h1 className="text-lg font-medium hidden sm:block">
                 {activeTab === "dashboard" && (language === "English" ? "Dashboard" : "डॅशबोर्ड")}
-                {activeTab === "tickets" && (language === "English" ? "Tickets" : "तिकिटे")}
-                {activeTab === "createTicket" && (language === "English" ? "Create Ticket" : "तिकीट तयार करा")}
-                {activeTab === "analytics" && (language === "English" ? "Analytics" : "अनॅलिटिक्स")}
+                {activeTab === "issues" && (language === "English" ? "Issues" : "समस्या")}
+                {activeTab === "createTicket" && (language === "English" ? "Create Issue" : "समस्या तयार करा")}
                 {activeTab === "help" && (language === "English" ? "Help" : "मदत")}
               </h1>
             </div>
@@ -1612,9 +1460,6 @@ export default function ITHelpDesk() {
                   <ChevronDown size={16} />
                 </div>
               </div>
-              <button className="p-1 rounded-full hover:bg-gray-100">
-                <Bell size={20} />
-              </button>
               <div className="relative flex items-center">
                 <button 
                   className="h-8 w-8 rounded-full bg-purple-200 flex items-center justify-center hover:bg-purple-300 focus:outline-none"
@@ -1646,9 +1491,8 @@ export default function ITHelpDesk() {
         {/* Main Content Area */}
         <main className="flex-1 overflow-auto">
           {activeTab === "dashboard" && renderDashboard()}
-          {activeTab === "tickets" && renderTicketsList()}
+          {activeTab === "issues" && renderTicketsList()}
           {activeTab === "createTicket" && renderCreateTicketForm()}
-          {activeTab === "analytics" && renderAnalytics()}
           {activeTab === "help" && renderHelp()}
         </main>
       </div>
