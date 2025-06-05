@@ -489,6 +489,7 @@ export default function ITHelpDesk() {
         createdBy: user.uid,
         createdAt: Timestamp.now(),
         userEmail: user.email,
+        empName: user.empName || user.name || 'N/A', // Add employee name from user object
         floor: newTicket.floor, // Use the floor from newTicket state
         building: newTicket.building // Add the building from newTicket state
       };
@@ -524,14 +525,25 @@ export default function ITHelpDesk() {
     try {
       setLoading(true);
       const ticketRef = doc(db, "tickets", ticketId);
-      await updateDoc(ticketRef, {
+      
+      const updateData = {
         status: newStatus
-      });
-      
+      };
+
+      // Add resolvedAt timestamp if status is resolved
+      if (newStatus === 'Resolved') { // Ensure this matches your status string
+        updateData.resolvedAt = Timestamp.now(); // Use Firestore Timestamp
+      } else {
+        // Optional: Remove resolvedAt if status changes back from Resolved
+        // Depending on your logic, you might want to clear the resolvedAt date
+        // if a ticket is reopened. Use Firebase's field value delete if needed.
+        // updateData.resolvedAt = firebase.firestore.FieldValue.delete(); // Example
+      }
+
+      await updateDoc(ticketRef, updateData);
+
       console.log("Issue status updated successfully");
-      
-      // Refresh issues list
-      // onSnapshot listener will handle updates automatically
+
     } catch (err) {
       console.error("Error updating issue:", err);
       setError("Failed to update issue: " + err.message);
@@ -988,10 +1000,12 @@ export default function ITHelpDesk() {
                         {issue.createdAt || 'N/A'}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-700 hidden md:table-cell whitespace-nowrap">
-                        {issue.resolvedAt ? new Date(issue.resolvedAt).toLocaleString() : ''}
+                        {/* Display Resolved At date and time, handling potential null/invalid dates */}
+                        {issue.resolvedAt ? (issue.resolvedAt instanceof Date && !isNaN(issue.resolvedAt.getTime()) ? issue.resolvedAt.toLocaleString() : 'N/A') : 'N/A'}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-700 hidden md:table-cell whitespace-nowrap">
-                        {issue.status === 'Resolved' ? (language === "English" ? "Solved" : "निराकरण केलेले") : ''}
+                        {/* Display "Solved" if status is Resolved, otherwise '-' */}
+                        {issue.status === 'Resolved' ? (language === "English" ? "Solved" : "निराकरण केलेले") : '-'}
                       </td>
                     </tr>
                   ))}
