@@ -250,16 +250,18 @@ export default function AuthSystem({ onLogin }) {
                   required
                 />
               </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Employee Name</label>
-                <input
-                  type="text"
-                  value={empName}
-                  onChange={(e) => setEmpName(e.target.value)}
-                  className="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  required
-                />
-              </div>
+              {mode === "register" && loginType === "user" && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Employee Name</label>
+                  <input
+                    type="text"
+                    value={empName}
+                    onChange={(e) => setEmpName(e.target.value)}
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium mb-2 !text-purple-200">Department</label>
                 <input
@@ -283,6 +285,18 @@ export default function AuthSystem({ onLogin }) {
                 </div>
               )}
             </>
+          )}
+          {loginType === "user" && mode === "login" && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Employee Name</label>
+              <input
+                type="text"
+                value={empName}
+                onChange={(e) => setEmpName(e.target.value)}
+                className="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                required
+              />
+            </div>
           )}
           <div>
             <label className="block text-sm font-medium mb-2 !text-purple-200">Email</label>
