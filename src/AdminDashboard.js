@@ -240,87 +240,46 @@ function useOfficeLayout(config) {
   }, [config]);
 }
 
-// OfficeDesk Component - Updated to use SVG shape and status-based styling
+// OfficeDesk Component - Restored to always show all devices as clickable
 const OfficeDesk = ({ system, status, onClick }) => {
-  // Removed baseClasses and sizeClasses from the outer div to rely on SVG for shape/size
   const baseClasses = "relative flex items-center justify-center cursor-pointer transition-all duration-200 overflow-hidden";
-
-  // Determine colors and effects based on status
-  const isAvailableOrResolved = status === 'available' || status === 'resolved';
   const isTicketOpen = status === 'open';
-
-  // SVG element styles for the monitor screen based on status
-  const monitorScreenStroke = isTicketOpen ? '#FF0000' : '#6B9AFF'; // Red for open, Blue otherwise
-  const monitorScreenStrokeWidth = isTicketOpen ? '12' : '8'; // Thicker stroke for open
-
-  // Add a transparent red rectangle inside the screen for open tickets
+  const monitorScreenStroke = isTicketOpen ? '#FF0000' : '#6B9AFF';
+  const monitorScreenStrokeWidth = isTicketOpen ? '12' : '8';
   const openTicketOverlay = isTicketOpen ? (
     <rect
       x="30" y="20" width="240" height="160" rx="20" ry="20"
-      fill="rgba(255, 0, 0, 0.3)" // Red with 30% opacity
+      fill="rgba(255, 0, 0, 0.3)"
     />
   ) : null;
-
-  const hoverEffectClass = isAvailableOrResolved ? 'hover:scale-105' : ''; // Hover effect for available/resolved
-
-  // Removed Status Indicator logic
-  // const showStatusIndicator = status === 'open' || status === 'in-progress';
-  // const statusColor = status === 'open' ? 'bg-red-500' : status === 'in-progress' ? 'bg-yellow-500' : '';
-  // const statusText = status?.charAt(0).toUpperCase() + status?.slice(1).toLowerCase();
-
+  const hoverEffectClass = 'hover:scale-105';
   return (
-    // The outer div now primarily manages size and click/hover effects
     <div
-      // Using flex classes for center alignment and applying responsive size directly here.
-      // Tailwind responsive utility classes like w-14 h-20 md:w-24 md:h-32 should be applied to this div.
       className={`${baseClasses} w-14 h-20 md:w-24 md:h-32 ${hoverEffectClass}`}
       onClick={onClick}
     >
-      {/* SVG Monitor Shape */}
-      {/* Adjust viewBox and size properties to make it responsive within the container div */}
       <svg width="100%" height="100%" viewBox="0 0 300 240" xmlns="http://www.w3.org/2000/svg" className="block m-auto">
-        {/* Monitor screen */}
         <rect
           x="30" y="20" width="240" height="160" rx="20" ry="20"
           fill="#5A6B8C"
           stroke={monitorScreenStroke}
           strokeWidth={monitorScreenStrokeWidth}
         />
-
-        {/* Transparent red overlay for open tickets */}
         {openTicketOverlay}
-
-        {/* Monitor stand base */}
         <rect x="110" y="200" width="80" height="12" rx="6" ry="6" fill="#6B9AFF"/>
-
-        {/* Monitor stand neck */}
         <rect x="145" y="180" width="10" height="30" fill="#6B9AFF"/>
-
-        {/* System ID Text */}
         <text
-          x="150" /* Center X */
-          y="100" /* Center Y within the screen rect (adjusted for text baseline) */
-          fontSize="40" /* Adjust size as needed */
-          fill="#FFFFFF" /* White text color */
-          textAnchor="middle" /* Align text horizontally in the middle */
-          dominantBaseline="middle" /* Align text vertically in the middle */
-          className="font-mono select-none pointer-events-none" // Prevent text selection/interfering with clicks
+          x="150"
+          y="100"
+          fontSize="40"
+          fill="#FFFFFF"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          className="font-mono select-none pointer-events-none"
         >
           {system?.id || 'N/A'}
         </text>
       </svg>
-
-      {/* Status Indicator - Removed */}
-      {/* {showStatusIndicator && (
-        <div className="absolute bottom-0 left-0 right-0 text-white text-[7px] sm:text-[9px] font-bold text-center py-0.5 leading-tight">
-          <span className={`px-1 py-0.5 rounded-sm ${statusColor}`}>
-            {statusText || 'Low'}
-          </span>
-        </div>
-      )} */}
-
-      {/* Overlay for hover effect - Applied via CSS class on the outer div now */}
-      {/* Status is handled by direct SVG styling */}
     </div>
   );
 };
@@ -1738,6 +1697,10 @@ export default function AdminDashboard({ user, onLogout }) {
           onPhotoUpload={handlePhotoUpload} // Pass the photo upload function as a prop
           selectedBuilding={selectedBuilding} // Pass selected building state
           onBuildingSelect={handleBuildingSelect} // Pass building selection handler
+          currentFloor={currentFloor}
+          setCurrentFloor={setCurrentFloor}
+          availableFloors={availableFloors}
+          setShowCreateFloor={setShowCreateFloor}
         />
         {/* Conditional Overlay for mobile sidebar */}
         {sidebarOpen && ( // Only show overlay if sidebar is open
@@ -1799,11 +1762,12 @@ export default function AdminDashboard({ user, onLogout }) {
 }
 
 // Header Component - Updated without photo upload functionality
-function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, openIssues, onPhotoUpload, selectedBuilding, onBuildingSelect }) {
+function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, openIssues, onPhotoUpload, selectedBuilding, onBuildingSelect, currentFloor, setCurrentFloor, availableFloors, setShowCreateFloor }) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isTownSquareDropdownOpen, setIsTownSquareDropdownOpen] = useState(false);
+  const [isFloorDropdownOpen, setIsFloorDropdownOpen] = useState(false);
 
   const handleDateChange = (date) => {
     setSelectedDate(date);
@@ -1827,21 +1791,26 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
     setIsTownSquareDropdownOpen(false);
   };
 
+  // Floor dropdown logic
+  const handleFloorSelect = (floor) => {
+    setCurrentFloor(floor);
+    setIsFloorDropdownOpen(false);
+  };
+
   return (
     <header className="bg-gradient-to-r from-gray-900 via-purple-900 to-gray-900 p-4 shadow-lg">
       <div className="container mx-auto">
         <div className="flex flex-wrap items-center justify-between">
-          {/* Left section with menu button and building selector */}
+          {/* Left section with menu button, building selector, and floor selector */}
           <div className="flex items-center space-x-4">
-        <button
-          onClick={toggleSidebar}
+            <button
+              onClick={toggleSidebar}
               className="md:hidden text-white hover:text-gray-300 focus:outline-none"
-        >
+            >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
-        </button>
-
+            </button>
             {/* Building selector dropdown */}
             <div className="relative">
               <button
@@ -1853,7 +1822,6 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-
               {isTownSquareDropdownOpen && (
                 <div className="absolute left-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
                   <div className="py-1" role="menu" aria-orientation="vertical">
@@ -1878,13 +1846,47 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
                     >
                       Building 3
                     </button>
-        </div>
-      </div>
+                  </div>
+                </div>
               )}
-        </div>
+            </div>
+            {/* Floor selector dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setIsFloorDropdownOpen(!isFloorDropdownOpen)}
+                className="flex items-center space-x-2 text-white hover:text-gray-300 focus:outline-none border border-gray-700 rounded px-3 py-1 bg-gray-800"
+              >
+                <span className="font-medium">Floor: {currentFloor}</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {isFloorDropdownOpen && (
+                <div className="absolute left-0 mt-2 w-32 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                  <div className="py-1" role="menu" aria-orientation="vertical">
+                    {availableFloors.map(floor => (
+                      <button
+                        key={floor}
+                        onClick={() => handleFloorSelect(floor)}
+                        className={`block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 ${floor === currentFloor ? 'font-bold bg-gray-200' : ''}`}
+                        role="menuitem"
+                      >
+                        {floor}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Create Floor button */}
+            <button
+              onClick={() => setShowCreateFloor(true)}
+              className="ml-2 px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 focus:outline-none"
+            >
+              Create Floor
+            </button>
           </div>
-
-          {/* Right section with calendar, profile, and stats */}
+          {/* ... rest of the header ... */}
           <div className="flex items-center space-x-6">
             {/* Calendar button */}
             <div className="relative">
