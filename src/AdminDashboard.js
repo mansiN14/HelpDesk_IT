@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, doc, updateDoc, setDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp } from "firebase/firestore";
-import { Clock, Users, AlertTriangle, Check, Map, Monitor, Cpu, Laptop, Award, Phone, Menu, X, Plus, Info, Bell, ChevronDown, Calendar } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
+import { Clock, Users, AlertTriangle, Check, Map, Monitor, Cpu, Laptop, Award, Phone, Menu, X, Plus, Info, Bell, ChevronDown, Calendar, Settings, BarChart } from 'lucide-react';
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import { ResponsiveContainer } from 'recharts';
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "./firebase";
@@ -182,10 +182,10 @@ function useOfficeLayout(config) {
       for (let col = 0; col < config.gridWidth && mdPlaced < config.totalMDCabins; col++) {
         if (grid[row][col].type === 'EMPTY') {
           grid[row][col] = {
-          type: 'MD_CABIN',
+            type: 'MD_CABIN',
             id: `CB-${String(mdCounter).padStart(2, '0')}`
-        };
-        mdCounter++;
+          };
+          mdCounter++;
           mdPlaced++;
         }
       }
@@ -211,10 +211,10 @@ function useOfficeLayout(config) {
     for (let row = 0; row < config.gridHeight && coPlaced < config.totalConferenceRooms; row++) {
       for (let col = 0; col < config.gridWidth && coPlaced < config.totalConferenceRooms; col++) {
         if (grid[row][col].type === 'EMPTY') {
-            grid[row][col] = {
+          grid[row][col] = {
             type: 'CONFERENCE',
             id: `CO-${String(coCounter).padStart(2, '0')}`
-            };
+          };
           coCounter++;
           coPlaced++;
         }
@@ -244,7 +244,7 @@ function useOfficeLayout(config) {
 const OfficeDesk = ({ system, status, onClick }) => {
   const baseClasses = "relative flex items-center justify-center cursor-pointer transition-all duration-200 overflow-hidden";
   const isTicketOpen = status === 'open';
-  const monitorScreenStroke = isTicketOpen ? '#FF0000' : '#6B9AFF';
+  const monitorScreenStroke = isTicketOpen ? '#FF0000' : '#A78BFA'; // Border is already purple
   const monitorScreenStrokeWidth = isTicketOpen ? '12' : '8';
   const openTicketOverlay = isTicketOpen ? (
     <rect
@@ -259,15 +259,17 @@ const OfficeDesk = ({ system, status, onClick }) => {
       onClick={onClick}
     >
       <svg width="100%" height="100%" viewBox="0 0 300 240" xmlns="http://www.w3.org/2000/svg" className="block m-auto">
+        {/* Monitor Screen - Change fill to transparent purple */}
         <rect
           x="30" y="20" width="240" height="160" rx="20" ry="20"
-          fill="#5A6B8C"
+          fill="rgba(167, 139, 250, 0.2)" // Transparent purple - Fixed syntax
           stroke={monitorScreenStroke}
           strokeWidth={monitorScreenStrokeWidth}
         />
         {openTicketOverlay}
-        <rect x="110" y="200" width="80" height="12" rx="6" ry="6" fill="#6B9AFF"/>
-        <rect x="145" y="180" width="10" height="30" fill="#6B9AFF"/>
+        {/* Monitor Stands - Change fill to purple */}
+        <rect x="110" y="200" width="80" height="12" rx="6" ry="6" fill="#A78BFA"/>
+        <rect x="145" y="180" width="10" height="30" fill="#A78BFA"/>
         <text
           x="150"
           y="100"
@@ -289,7 +291,7 @@ function IssueOverviewChart({ data }) {
   return (
     <div className="w-full h-full min-h-[300px]">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+        <LineChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis
             dataKey="date"
@@ -319,8 +321,8 @@ function IssueOverviewChart({ data }) {
             height={36}
             formatter={(value) => value}
           />
-          <Bar dataKey="count" fill="#8B5CF6" />
-        </BarChart>
+          <Line dataKey="count" stroke="#8B5CF6" />
+        </LineChart>
       </ResponsiveContainer>
     </div>
   );
@@ -491,7 +493,7 @@ function Dashboard({ tickets, usersList }) {
 
   // Priority distribution data (adapting for Issue Breakdown visual)
   const issueBreakdownData = [
-    { name: 'Network', value: networkIssues, color: '#60A5FA' }, // Blue
+    { name: 'Network', value: networkIssues, color: '#60A5FA' }, // purple
     { name: 'Software', value: softwareIssues, color: '#C084FC' }, // Purple
     { name: 'Hardware', value: hardwareIssues, color: '#F59E0B' }, // Amber
     { name: 'Other', value: otherIssues, color: '#2DD4BF' }, // Teal
@@ -628,33 +630,6 @@ function Dashboard({ tickets, usersList }) {
         </div>
       </div>
 
-      {/* Resolvers Overview Section */}
-      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
-        <h3 className="text-lg font-medium text-white mb-4">Resolvers Overview</h3>
-        {/* Content for Resolvers Overview will go here */}
-        <div className="space-y-3 text-gray-300">
-          {resolversData.length === 0 ? (
-            <div className="text-gray-400 text-sm text-center">No resolvers found or no tickets assigned.</div>
-          ) : (
-            resolversData.map(resolver => (
-              <div key={resolver.id} className="flex items-center justify-between bg-gray-900 p-3 rounded-lg border border-gray-700">
-                <div className="flex items-center">
-                  <div className="text-purple-400 font-medium mr-3">{resolver.name}</div>
-                  {resolver.empId !== 'N/A' && <div className="text-xs text-gray-500">{resolver.empId}</div>}
-                </div>
-                <div className="flex items-center space-x-4 text-sm">
-                  <span className="text-white font-bold">{resolver.total}</span>
-                  <span className="text-gray-400">Total</span>
-                   {/* Display counts for open, in-progress, resolved */}
-                   <span className="text-red-400">Open: {resolver.open}</span>
-                   <span className="text-yellow-400">In Prog: {resolver.inProgress}</span>
-                   <span className="text-green-400">Resolved: {resolver.resolved}</span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
 
        {/* Queue Section */}
        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-md">
@@ -668,7 +643,7 @@ function Dashboard({ tickets, usersList }) {
                    {/* Display Floor */}
                    <span className="text-xs px-2 py-1 rounded font-medium bg-gray-700 text-gray-300">{ticket.floor || 'Floor N/A'}</span>
                    {/* Display Device/System ID */}
-                   <span className="text-xs px-2 py-1 rounded font-medium bg-blue-600 text-white">{ticket.deviceId || ticket.systemId || 'ID N/A'}</span>
+                   <span className="text-xs px-2 py-1 rounded font-medium bg-purple-600 text-white">{ticket.deviceId || ticket.systemId || 'ID N/A'}</span>
                 </div>
                  <div className="flex items-center space-x-3">
                    {/* Removed placeholder numerical badges and Get button for now */}
@@ -703,7 +678,7 @@ function Dashboard({ tickets, usersList }) {
                   {/* Display Floor or Placeholder */}
                   <span className="text-xs px-2 py-1 rounded font-medium bg-gray-700 text-gray-300">{ticket.floor || 'N/A'}</span>
                   {/* Display Device/System ID or Placeholder */}
-                  <span className="text-xs px-2 py-1 rounded font-medium bg-blue-600 text-white">{ticket.deviceId || ticket.systemId || 'N/A'}</span>
+                  <span className="text-xs px-2 py-1 rounded font-medium bg-purple-600 text-white">{ticket.deviceId || ticket.systemId || 'N/A'}</span>
                </div>
                 <div className="flex items-center space-x-3">
                   {/* Removed placeholder numerical badges */}
@@ -747,13 +722,19 @@ function Dashboard({ tickets, usersList }) {
                   <td className="px-4 py-3 font-medium">{floor}</td>
                   <td className="px-4 py-3">{stats.total}</td>
                   <td className="px-4 py-3">
-                    <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-xs">{stats.open}</span>
+                    <span className="bg-red-500 text-white px-2 py-0.5 rounded-full text-xs font-medium border border-red-500/20 backdrop-blur-sm">
+                      {stats.open}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="bg-yellow-500 text-black px-2 py-0.5 rounded-full text-xs">{stats.inProgress}</span>
+                    <span className="bg-yellow-500 text-black px-2 py-0.5 rounded-full text-xs font-medium border border-yellow-500/20 backdrop-blur-sm">
+                      {stats.inProgress}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="bg-green-500 text-white px-2 py-0.5 rounded-full text-xs">{stats.resolved}</span>
+                    <span className="bg-green-500 text-white px-2 py-0.5 rounded-full text-xs font-medium border border-green-500/20 backdrop-blur-sm">
+                      {stats.resolved}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -768,7 +749,8 @@ function Dashboard({ tickets, usersList }) {
         <div className="space-y-3">
           {tickets.slice(0, 5).map((ticket, index) => (
             <div key={index} className="flex items-start bg-gray-900 p-3 rounded-lg">
-              <div className={`mt-1 rounded-full w-3 h-3 flex-shrink-0 ${ticket.status === 'open' ? 'bg-red-500' :
+              <div className={`mt-1 rounded-full w-3 h-3 flex-shrink-0 ${
+                ticket.status === 'open' ? 'bg-red-500' :
                   ticket.status === 'in-progress' ? 'bg-yellow-500' :
                     'bg-green-500'
                 }`}></div>
@@ -792,7 +774,7 @@ function Dashboard({ tickets, usersList }) {
 }
 
 // TicketDetail Component - Updated for responsiveness
-function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile }) {
+function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile, isViewOnly, getBuildingFromFloor }) {
   const [assignee, setAssignee] = useState(ticket.assignedTo || '');
   const [staffList] = useState(['Name1', 'Name2', 'Name3', 'Name4', 'Name5']); // Example staff list
 
@@ -871,7 +853,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                 {ticket.deviceId || ticket.systemId || 'Unknown Device'}
               </h3>
               <p className="text-sm text-gray-400">
-                Floor: {ticket.floor || 'Unknown'} · Created: {ticket.createdAt ? (typeof ticket.createdAt.toDate === 'function' ? ticket.createdAt.toDate() : new Date(ticket.createdAt)).toLocaleString() : 'N/A'}
+                Building: {getBuildingFromFloor(ticket.floor)} · Floor: {ticket.floor || 'Unknown'} · Created: {ticket.createdAt ? (typeof ticket.createdAt.toDate === 'function' ? ticket.createdAt.toDate() : new Date(ticket.createdAt)).toLocaleString() : 'N/A'}
               </p>
             </div>
           </div>
@@ -885,6 +867,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
             </div>
 
             {/* Status section */}
+            {!isViewOnly && ( // Only show if NOT in view-only mode
             <div className="bg-gray-900 p-3 rounded-lg border border-gray-700">
               <h4 className="text-sm font-medium text-gray-400 mb-2">Status</h4>
               <div className="flex flex-wrap gap-2">
@@ -917,6 +900,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                 </button>
               </div>
             </div>
+            )}
 
             {/* Priority label */}
             <div className="bg-gray-900 p-3 rounded-lg border border-gray-700">
@@ -930,6 +914,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
             </div>
 
             {/* Assign section */}
+            {!isViewOnly && ( // Only show if NOT in view-only mode
             <div className="bg-gray-900 p-3 rounded-lg border border-gray-700">
               <h4 className="text-sm font-medium text-gray-400 mb-2">Assign Technician</h4>
               <div className="flex items-center gap-2">
@@ -961,6 +946,7 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
                 </div>
               )}
             </div>
+            )}
 
             {/* Activity timeline */}
             <div className="bg-gray-900 p-3 rounded-lg border border-gray-700">
@@ -1006,6 +992,149 @@ function TicketDetail({ ticket, onClose, updateStatus, assignTicket, isMobile })
   );
 }
 
+// New Modal Component: DeviceActionModal
+function DeviceActionModal({ system, onClose, setShowChangeDeviceIdForm, selectedSystemForAction, tickets, setSelectedTicket, setIsTicketDetailViewOnly }) {
+  // Placeholder image component (replace with actual SVG/image if available)
+  // This is a basic placeholder using a Lucide icon. You'll want to replace this
+  // with the actual illustration from your second screenshot.
+  const Illustration = () => (
+    <div className="flex justify-center mb-6">
+      {/* Replace this SVG with your actual illustration */}
+      <svg width="150" height="150" viewBox="0 0 150 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Adjusted placeholder shapes for dark theme */}
+        {/* Using shades of gray and purple that fit the dark background */}
+        <circle cx="75" cy="60" r="40" fill="#374151"/> {/* Dark gray circle */}
+        <rect x="30" y="80" width="90" height="50" rx="10" fill="#4B5563"/> {/* Medium gray rect */}
+        <path d="M75 130 L60 145 L90 145 L75 130Z" fill="#6B21A8"/> {/* Dark purple triangle */}
+        {/* Add other details from your illustration with dark theme colors */}
+      </svg>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-gradient-to-br from-gray-900/80 to-purple-900/80 rounded-lg shadow-xl p-6 max-w-sm w-full text-center relative border border-purple-700 backdrop-blur-xl">
+        {/* Close button */}
+        <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-white">
+          <X size={20} />
+        </button>
+
+        {/* Illustration */}
+        <Illustration />
+
+        {/* Optional: Display system info */}
+        {system && (
+          <p className="text-gray-200 mb-4 text-lg font-semibold">Device: {system.id || system.deviceId || system.systemId}</p>
+        )}
+
+        {/* Buttons */}
+        <div className="flex flex-col space-y-3">
+          <button
+            onClick={() => {
+              console.log("Change Device ID clicked for system:", system);
+              onClose(); // Close the action modal
+              setShowChangeDeviceIdForm(true); // Open the change ID form modal
+              // selectedSystemForAction state is already set in AdminDashboard
+            }}
+            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-lg font-medium"
+          >
+            Change Device ID
+          </button>
+          <button
+            onClick={() => {
+              console.log("Check Issue clicked for system:", system);
+              onClose(); // Close the action modal
+              const relevantTicket = tickets.find(
+                t => (t.systemId === system.id || t.deviceId === system.id) &&
+                     (t.status === 'open' || t.status === 'in-progress')
+              );
+              if (relevantTicket) {
+                setSelectedTicket(relevantTicket); // Open the ticket details sidebar
+                setIsTicketDetailViewOnly(true); // Set to true for view-only mode
+              } else {
+                console.warn("Check Issue clicked, but no relevant open/in-progress ticket found for system:", system);
+                // Optionally, handle this case (e.g., show a message) - currently does nothing.
+              }
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-lg font-medium"
+          >
+            Check Issue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// New Modal Component: ChangeDeviceIdFormModal
+function ChangeDeviceIdFormModal({ system, onClose, onSave }) {
+  const [newDeviceId, setNewDeviceId] = useState('');
+  const [confirmDeviceId, setConfirmDeviceId] = useState('');
+  const [error, setError] = useState(null);
+
+  const handleSave = () => {
+    setError(null);
+    if (newDeviceId.trim() === '') {
+      setError('New Device ID cannot be empty.');
+      return;
+    }
+    if (newDeviceId !== confirmDeviceId) {
+      setError('New Device ID and Confirm Device ID do not match.');
+      return;
+    }
+
+    // Call the parent onSave function with the system and new ID
+    onSave(system.id, newDeviceId);
+    onClose(); // Close the modal after saving
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-gradient-to-br from-gray-900/80 to-purple-900/80 rounded-lg shadow-xl p-6 max-w-sm w-full text-center relative border border-purple-700 backdrop-blur-xl">
+        {/* Close button */}
+        <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-white">
+          <X size={20} />
+        </button>
+
+        <h3 className="text-lg font-bold text-white mb-2">Change Device ID</h3>
+        {system && (
+          <p className="text-gray-600 mb-4 text-sm">(Current: {system.id || system.deviceId || system.systemId})</p>
+        )}
+
+        {error && (
+          <div className="text-red-600 text-sm mb-4">{error}</div>
+        )}
+
+        {/* Input fields */}
+        <div className="space-y-4 mb-6">
+          <input
+            type="text"
+            placeholder="Enter New Device ID"
+            value={newDeviceId}
+            onChange={(e) => setNewDeviceId(e.target.value)}
+            className="w-full px-4 py-3 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-600 text-gray-700"
+          />
+          <input
+            type="text"
+            placeholder="Confirm Device New ID"
+            value={confirmDeviceId}
+            onChange={(e) => setConfirmDeviceId(e.target.value)}
+            className="w-full px-4 py-3 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-600 text-gray-700"
+          />
+        </div>
+
+        {/* Save Changes Button */}
+        <button
+          onClick={handleSave}
+          className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-md hover:opacity-90 transition-opacity font-medium text-lg"
+        >
+          Save Changes
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Main Admin App Component
 export default function AdminDashboard({ user, onLogout }) {
   const [tickets, setTickets] = useState([]);
@@ -1014,6 +1143,13 @@ export default function AdminDashboard({ user, onLogout }) {
   // Add state for selected building
   // Changed default building name from 'Town Square' to 'Building 1'
   const [selectedBuilding, setSelectedBuilding] = useState('Building 1'); // Default building
+
+  // Add state for the device action modal
+  const [deviceActionModalOpen, setDeviceActionModalOpen] = useState(false);
+  const [selectedSystemForAction, setSelectedSystemForAction] = useState(null);
+
+  // Add state for the change device ID form modal
+  const [showChangeDeviceIdForm, setShowChangeDeviceIdForm] = useState(false);
 
   // Add check for user authentication
   useEffect(() => {
@@ -1034,6 +1170,8 @@ export default function AdminDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('tickets'); // Changed default tab to 'tickets'
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // State to control view-only mode for TicketDetail
+  const [isTicketDetailViewOnly, setIsTicketDetailViewOnly] = useState(false);
   const [layoutConfig, setLayoutConfig] = useState({
     S1: {
       ...defaultLayoutConfig,
@@ -1065,6 +1203,18 @@ export default function AdminDashboard({ user, onLogout }) {
   // Get the current floor's layout configuration
   const currentFloorConfig = layoutConfig[currentFloor] || layoutConfig['S1'];
   const officeLayout = useOfficeLayout(currentFloorConfig);
+
+  // Function to get building from floor
+  const getBuildingFromFloor = (floor) => {
+    if (!floor) return 'N/A';
+
+    // Map floors to buildings
+    if (floor.startsWith('S')) return 'Building 1';
+    if (floor.startsWith('F')) return 'Building 2';
+    if (floor.startsWith('G')) return 'Building 3';
+
+    return 'N/A';
+  };
 
   // Update the useEffect for fetching tickets to use real-time updates
   useEffect(() => {
@@ -1257,6 +1407,7 @@ export default function AdminDashboard({ user, onLogout }) {
   // Handle ticket selection (close sidebar on mobile when selecting ticket)
   const handleTicketSelect = (ticket) => {
     setSelectedTicket(ticket);
+    setIsTicketDetailViewOnly(false); // Set to false for full edit mode from Reports
     if (window.innerWidth < 768) {
       setSidebarOpen(false);
     }
@@ -1454,7 +1605,7 @@ export default function AdminDashboard({ user, onLogout }) {
           spaceTypes: floorData.spaceTypes || spaceTypes
         };
         if (!floorNames.includes(doc.id)) {
-          floorNames.push(doc.id);
+        floorNames.push(doc.id);
         }
       });
 
@@ -1689,7 +1840,7 @@ export default function AdminDashboard({ user, onLogout }) {
       <div className="relative z-10 flex flex-col min-h-screen">
         <Header
           user={user}
-          onLogout={onLogout}
+          onLogout={onLogout} // <--- The onLogout prop is passed here
           toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           totalIssues={totalIssuesForDisplay}
           resolvedIssues={resolvedIssuesForDisplay}
@@ -1718,9 +1869,9 @@ export default function AdminDashboard({ user, onLogout }) {
             tickets={tickets}
           />
           {/* Main content area - Adjust for sidebar on mobile and desktop */}
-          <main className={`flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'md:ml-64'}`}> {/* Adjusted margin for open sidebar */}
+          <main className={`flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto transition-all duration-300`}>
             {/* Render content based on activeTab */}
-            {activeTab === 'tickets' && (
+            {activeTab === 'reports' && ( // <--- Changed 'tickets' to 'reports'
               <ReportsView
                 tickets={tickets}
                 setSelectedTicket={handleTicketSelect}
@@ -1733,7 +1884,7 @@ export default function AdminDashboard({ user, onLogout }) {
               />
             )}
             {activeTab === 'map' && (
-              <div className="relative flex-1">
+              <div className="relative flex flex-1 items-center justify-center">
                 <FloorView
                   tickets={tickets}
                   officeLayout={officeLayout}
@@ -1741,18 +1892,46 @@ export default function AdminDashboard({ user, onLogout }) {
                   layoutConfig={layoutConfig}
                   setLayoutConfig={setLayoutConfig}
                   currentFloor={currentFloor}
+                  setSelectedSystemForAction={setSelectedSystemForAction}
+                  setDeviceActionModalOpen={setDeviceActionModalOpen}
                 />
                 {showCreateFloor && <CreateFloorModal />}
               </div>
             )}
           </main>
+
+          {/* Render the new Device Action Modal */}
+          {deviceActionModalOpen && (
+            <DeviceActionModal
+              system={selectedSystemForAction}
+              onClose={() => setDeviceActionModalOpen(false)}
+              setShowChangeDeviceIdForm={setShowChangeDeviceIdForm}
+              selectedSystemForAction={selectedSystemForAction}
+              tickets={tickets} // Pass the tickets list
+              setSelectedTicket={setSelectedTicket} // Pass the state setter
+              setIsTicketDetailViewOnly={setIsTicketDetailViewOnly} // Pass the setter
+            />
+          )}
+
+          {/* Render the Change Device ID Form Modal */}
+          {showChangeDeviceIdForm && selectedSystemForAction && (
+            <ChangeDeviceIdFormModal
+              system={selectedSystemForAction}
+              onClose={() => setShowChangeDeviceIdForm(false)}
+              onSave={handleSaveNewDeviceId} // Pass the save handler
+            />
+          )}
+
+          {/* Existing Ticket Detail Sidebar rendering */}
           {selectedTicket && (
             <TicketDetail
               ticket={selectedTicket}
               onClose={() => setSelectedTicket(null)}
               updateStatus={updateTicketStatus}
               assignTicket={assignTicket}
-              isMobile={window.innerWidth < 768} // Adjust for responsiveness
+              isMobile={window.innerWidth < 768}
+              isViewOnly={isTicketDetailViewOnly} // Pass the view-only state
+              getBuildingFromFloor={getBuildingFromFloor} // Pass the function
             />
           )}
         </div>
@@ -1799,18 +1978,26 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
 
   return (
     <header className="bg-gradient-to-r from-gray-900 via-purple-900 to-gray-900 p-4 shadow-lg">
-      <div className="container mx-auto">
-        <div className="flex flex-wrap items-center justify-between">
-          {/* Left section with menu button, building selector, and floor selector */}
+      {/* Main header container with flex properties */}
+      {/* Using flex-wrap for responsiveness on smaller screens, aligning items and adding padding */}
+      <div className="flex flex-wrap items-center px-4 sm:px-6 lg:px-8 gap-4">
+        {/* Left section - Sidebar Toggle and Logo */}
           <div className="flex items-center space-x-4">
             <button
               onClick={toggleSidebar}
-              className="md:hidden text-white hover:text-gray-300 focus:outline-none"
+            className="text-white hover:text-gray-300 focus:outline-none"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
+          {/* Placeholder for Company Logo */}
+          <div className="w-12 h-10 bg-gray-700 rounded-md flex items-center justify-center text-xs text-gray-400">Logo</div> {/* Placeholder */}
+        </div>
+
+        {/* Middle section - Building/Floor Selectors and Create Floor Button */}
+        {/* Allowing this section to grow and take space, centering its content */}
+        <div className="flex items-center space-x-4 flex-grow justify-center">
             {/* Building selector dropdown */}
             <div className="relative">
               <button
@@ -1886,8 +2073,26 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
               Create Floor
             </button>
           </div>
-          {/* ... rest of the header ... */}
-          <div className="flex items-center space-x-6">
+
+        {/* Right section - Stats, Calendar, Profile */}
+        {/* Keeping these grouped and aligned to the right */}
+        <div className="flex items-center space-x-6 ml-auto">
+          {/* Stats */}
+          <div className="flex items-center space-x-4 sm:space-x-6">
+            <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
+              <div className="text-xl sm:text-2xl font-bold text-white">{totalIssues}</div>
+              <div className="text-xs sm:text-sm text-gray-300">Total</div>
+            </div>
+            <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
+              <div className="text-xl sm:text-2xl font-bold text-green-400">{resolvedIssues}</div>
+              <div className="text-xs sm:text-sm text-gray-300">Resolved</div>
+            </div>
+            <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
+              <div className="text-xl sm:text-2xl font-bold text-red-400">{openIssues}</div>
+              <div className="text-xs sm:text-sm text-gray-300">Open</div>
+            </div>
+          </div>
+
             {/* Calendar button */}
             <div className="relative">
               <button
@@ -1914,22 +2119,6 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
                   />
                 </div>
               )}
-            </div>
-
-            {/* Stats */}
-            <div className="flex items-center space-x-4 sm:space-x-6">
-              <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
-                <div className="text-xl sm:text-2xl font-bold text-white">{totalIssues}</div>
-                <div className="text-xs sm:text-sm text-gray-300">Total</div>
-              </div>
-              <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
-                <div className="text-xl sm:text-2xl font-bold text-green-400">{resolvedIssues}</div>
-                <div className="text-xs sm:text-sm text-gray-300">Resolved</div>
-              </div>
-              <div className="text-center bg-gray-800/50 px-3 py-2 rounded-lg">
-                <div className="text-xl sm:text-2xl font-bold text-red-400">{openIssues}</div>
-                <div className="text-xs sm:text-sm text-gray-300">Open</div>
-              </div>
             </div>
 
             {/* Profile section */}
@@ -1980,7 +2169,7 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
                     </div>
                     <div className="border-t border-gray-100"></div>
           <button
-            onClick={onLogout}
+            onClick={onLogout} // <--- This calls the onLogout prop
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       role="menuitem"
           >
@@ -1989,7 +2178,6 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
                   </div>
                 </div>
         )}
-            </div>
           </div>
         </div>
       </div>
@@ -2001,8 +2189,8 @@ function Header({ user, onLogout, toggleSidebar, totalIssues, resolvedIssues, op
 function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar, tickets }) {
   const tabs = [
     { id: 'map', label: 'Floor Map', icon: <Map size={20} /> },
-    { id: 'tickets', label: 'Reports', icon: <AlertTriangle size={20} /> },
-    { id: 'dashboard', label: 'Dashboard', icon: <BarChart size={20} /> },
+    { id: 'reports', label: 'Reports', icon: <AlertTriangle size={20} /> },
+    { id: 'dashboard', label: 'Dashboard', icon: <BarChart size={20} /> }, // Make sure this line has the icon
   ];
 
   // Calculate active tickets
@@ -2010,7 +2198,9 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar, tickets }) {
 
   return (
     // Adjusted classes: fixed on mobile, relative on md+, controlled translation only on mobile
-    <aside className={`bg-gray-900/40 backdrop-blur-xl text-gray-300 shadow-2xl border-r border-gray-700/30 z-30 top-0 left-0 h-full w-64 transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isOpen ? 'translate-x-0 fixed' : '-translate-x-full fixed md:relative'}`}>
+    <aside className={`bg-gray-900/40 backdrop-blur-xl text-gray-300 shadow-2xl border-r border-gray-700/30 z-30 top-0 left-0 h-full w-64 transition-transform duration-300 ease-in-out fixed
+      ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+    >
       {/* Mobile Header */}
       <div className="flex justify-between items-center p-4 md:hidden border-b border-gray-700/30 bg-gray-900/30 backdrop-blur-sm">
         <div className="flex items-center space-x-2">
@@ -2025,11 +2215,15 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar, tickets }) {
       </div>
 
       {/* Desktop Header - Always visible at the top of the fixed sidebar */}
-      <div className="hidden md:flex flex-col items-center p-6 border-b border-gray-700/30 bg-gray-900/30 backdrop-blur-sm">
+      <div className="hidden md:flex flex-col items-center p-6 border-b border-gray-700/30 bg-gray-900/30 backdrop-blur-sm relative">
         <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white w-14 h-14 rounded-xl flex items-center justify-center font-bold text-2xl mb-3 shadow-lg shadow-purple-500/20">
           IT
         </div>
         <h2 className="text-xl font-semibold text-purple-400">Support Control</h2>
+        {/* Add Close Button for Desktop */}
+        <button onClick={closeSidebar} className="absolute top-4 right-4 text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-700/30 transition-colors">
+          <X size={24} />
+        </button>
       </div>
 
       {/* Navigation */}
@@ -2111,35 +2305,50 @@ function Sidebar({ activeTab, setActiveTab, isOpen, closeSidebar, tickets }) {
 }
 
 // FloorView Component - Updated for responsiveness
-function FloorView({ officeLayout, tickets, setSelectedTicket, currentFloor }) {
+function FloorView({ 
+  officeLayout, 
+  tickets, 
+  setSelectedTicket, 
+  currentFloor,
+  setSelectedSystemForAction,
+  setDeviceActionModalOpen 
+}) {
   const [selectedSection, setSelectedSection] = useState('floor'); // Default to 'floor'
   const [selectedSystem, setSelectedSystem] = useState(null);
 
   const handleSystemClick = (system) => {
-    setSelectedSystem(system);
+    console.log("handleSystemClick entered for system:", system);
+    setSelectedSystem(system); // Keep this if you use selectedSystem elsewhere
     
     // Find the most recent ticket for this system
+    console.log("All tickets available:", tickets);
     const systemTickets = tickets.filter(t => 
       (t.systemId === system.id || t.deviceId === system.id) && 
       (t.status === 'open' || t.status === 'in-progress')
     ).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+    console.log("Found system tickets:", systemTickets);
+
     if (systemTickets.length > 0) {
-      // If there are tickets, show the most recent one
-      setSelectedTicket(systemTickets[0]);
+      // If there are open tickets, show the action modal
+      console.log("Open ticket found, showing action modal for system:", system);
+      setSelectedSystemForAction(system); // Store system info for the modal
+      setDeviceActionModalOpen(true); // Open the modal
+
+      // Do NOT call setSelectedTicket here if you don't want the sidebar to open
+      // setSelectedTicket(systemTickets[0]); // Comment out or remove this line
+
     } else {
-      // If no tickets, create a new ticket object with system info
-      const newTicket = {
-        systemId: system.id,
-        deviceId: system.id,
-        floor: system.floor || currentFloor,
-        type: system.type,
-        status: 'open',
-        createdAt: new Date(),
-        issue: `Issue with ${system.type} ${system.id}`,
-        priority: 'medium'
-      };
-      setSelectedTicket(newTicket);
+      // If no open tickets, you might still want to allow creating a new ticket
+      // or do nothing. Based on your request, we only show the modal for open tickets.
+      // If you want to create a new ticket from the map click when no open ticket exists,
+      // keep the new ticket creation logic here and call setSelectedTicket with the new ticket.
+      console.log("No open tickets found for system. Not showing action modal.");
+      // Optional: You could add logic here to handle clicks on devices without open tickets
+      // (e.g., show a "Create New Ticket" modal)
+      setSelectedTicket(null); // Ensure sidebar is closed if no open ticket
+      setSelectedSystemForAction(null); // Clear system for action
+      setDeviceActionModalOpen(false); // Ensure modal is closed
     }
   };
 
@@ -2147,7 +2356,7 @@ function FloorView({ officeLayout, tickets, setSelectedTicket, currentFloor }) {
 
   const getSectionColor = (type) => {
     switch (type) {
-      case 'WS': return 'bg-blue-500';
+      case 'WS': return 'bg-purple-500';
       case 'MS': return 'bg-green-500';
       case 'PR': return 'bg-purple-500';
       case 'EMPTY': return 'bg-gray-200';
@@ -2185,7 +2394,7 @@ function FloorView({ officeLayout, tickets, setSelectedTicket, currentFloor }) {
   }, {});
 
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 max-w-7xl">
+    <div className="w-full px-2 sm:px-4 py-4 sm:py-8">
       <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-700 p-4 sm:p-8">
         <div className="mb-4 sm:mb-8">
           {/* Toggle-like Section Filters */}
@@ -2196,8 +2405,8 @@ function FloorView({ officeLayout, tickets, setSelectedTicket, currentFloor }) {
                   key={section.id}
                   onClick={() => setSelectedSection(section.id)}
                   className={`px-6 py-2 rounded-full text-sm font-medium transition-all duration-200 ${selectedSection === section.id
-                      ? 'bg-white text-purple-700 shadow-sm' // Active state
-                      : 'text-gray-300 hover:text-white' // Inactive state
+                      ? 'bg-white text-purple-700 shadow-sm'
+                      : 'text-gray-300 hover:text-white'
                   }`}
                 >
                   {section.label}
@@ -2206,148 +2415,48 @@ function FloorView({ officeLayout, tickets, setSelectedTicket, currentFloor }) {
             </div>
           </div>
         </div>
-
         {/* Render grouped systems */}
-        <div className="flex flex-col items-center space-y-8">
-          {selectedSection === 'floor' && (
-            <>
-              {groupedSystems.WORKSTATION && groupedSystems.WORKSTATION.length > 0 && (
-                <div className="w-full flex flex-col items-center">
-                  <h3 className="text-lg font-semibold text-white mb-4">Workstations</h3>
-                  {/* Use a responsive grid for pairs */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
-                    {organizeLayoutByImage(groupedSystems.WORKSTATION).map((system, index) => (
-                      <div key={`ws-${index}`} className="flex items-center justify-center">
-                        <OfficeDesk
-                          key={`ws-system-${index}`}
-                          system={system}
-                          status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
-                          onClick={() => handleSystemClick(system)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+        {/* Apply flex centering here to the container holding system groups */}
+        <div className="flex flex-col items-center justify-center space-y-8 min-h-[500px]">
+          {/* ... existing code before the map loop ... */}
+{Object.entries(groupedSystems).map(([type, systems]) => (
+  <div key={type} className="w-full flex flex-col items-center">
+    <h3 className="text-lg font-semibold text-white mb-4">{type.replace('_', ' ').toUpperCase()}</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 lg:grid-cols-8 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
+      {systems.map((system, index) => {
+        // Determine the status for the current system on the current floor
+        const systemStatus = tickets.find(
+          t => (t.systemId === system.id || t.deviceId === system.id) && t.floor === currentFloor
+        )?.status || 'available';
+
+        // Determine if the device should be clickable
+        const isClickable = systemStatus === 'open';
+
+        return (
+          // Add conditional classes for styling (cursor, opacity)
+          <div
+            key={`system-${type}-${index}`}
+            className={`flex items-center justify-center ${isClickable ? '' : 'cursor-not-allowed opacity-60'}`}
+            // Apply onClick handler only if the device is clickable
+            onClick={isClickable ? () => handleSystemClick(system) : undefined}
+          >
+            <OfficeDesk
+              key={`officesystem-${type}-${index}`}
+              system={system}
+              status={systemStatus} // Pass the determined status
+              // onClick prop on OfficeDesk itself can be removed or made redundant
+              // as the click handling is now on the wrapper div
+            />
+          </div>
+        );
+      })}
+    </div>
+         </div>
+       ))}
+{/* ... existing code after the map loop ... */}
+          {systemsForSelectedSection.length === 0 && (
+            <div className="text-gray-400 text-center text-sm">No systems available in this section.</div>
               )}
-
-              {groupedSystems.TECHNICAL_WS && groupedSystems.TECHNICAL_WS.length > 0 && (
-                <div className="w-full flex flex-col items-center">
-                  <h3 className="text-lg font-semibold text-white mb-4">Technical Workstations</h3>
-                   {/* Use a responsive grid for pairs */}
-                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
-                     {organizeLayoutByImage(groupedSystems.TECHNICAL_WS).map((system, index) => (
-                       <div key={`tws-${index}`} className="flex items-center justify-center">
-                         <OfficeDesk
-                           key={`tws-system-${index}`}
-                           system={system}
-                           status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
-                           onClick={() => handleSystemClick(system)}
-                         />
-                       </div>
-                     ))}
-                   </div>
-                </div>
-              )}
-
-              {groupedSystems.TEAM_LEAD && groupedSystems.TEAM_LEAD.length > 0 && (
-                <div className="w-full flex flex-col items-center">
-                  <h3 className="text-lg font-semibold text-white mb-4">Team Lead Tables</h3>
-                  {/* Use a responsive grid for pairs */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
-                    {organizeLayoutByImage(groupedSystems.TEAM_LEAD).map((system, index) => (
-                      <div key={`tl-${index}`} className="flex items-center justify-center">
-                        <OfficeDesk
-                          key={`tl-system-${index}`}
-                          system={system}
-                          status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
-                          onClick={() => handleSystemClick(system)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-               {/* Message if no systems visible in Floor section */}
-              {!groupedSystems.WORKSTATION && !groupedSystems.TECHNICAL_WS && !groupedSystems.TEAM_LEAD && (
-                 <div className="text-gray-400 text-center text-sm">No floor systems available in this section.</div>
-              )}
-
-            </>
-          )}
-
-          {selectedSection === 'cabin' && (
-             <>
-               {/* Render Cabin types in separate sections using the standard layout */}
-               {groupedSystems.MD_CABIN && groupedSystems.MD_CABIN.length > 0 && (
-                 <div className="w-full flex flex-col items-center">
-                   <h3 className="text-lg font-semibold text-white mb-4">MD Cabins</h3>
-                    {/* Use a responsive grid for pairs */}
-                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
-                     {organizeLayoutByImage(groupedSystems.MD_CABIN).map((system, index) => (
-                       <div key={`mdcabin-${index}`} className="flex items-center justify-center">
-                         <OfficeDesk
-                           key={`mdcabin-system-${index}`}
-                           system={system}
-                           status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
-                           onClick={() => handleSystemClick(system)}
-                         />
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               )}
-
-               {groupedSystems.MEETING_ROOM && groupedSystems.MEETING_ROOM.length > 0 && (
-                 <div className="w-full flex flex-col items-center">
-                   <h3 className="text-lg font-semibold text-white mb-4">Meeting Rooms</h3>
-                    {/* Use a responsive grid for pairs */}
-                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
-                     {organizeLayoutByImage(groupedSystems.MEETING_ROOM).map((system, index) => (
-                       <div key={`meeting-${index}`} className="flex items-center justify-center">
-                         <OfficeDesk
-                           key={`meeting-system-${index}`}
-                           system={system}
-                           status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
-                           onClick={() => handleSystemClick(system)}
-                         />
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-               )}
-
-              {groupedSystems.CONFERENCE && groupedSystems.CONFERENCE.length > 0 && (
-                <div className="w-full flex flex-col items-center">
-                  <h3 className="text-lg font-semibold text-white mb-4">Conference Rooms</h3>
-                   {/* Use a responsive grid for pairs */}
-                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 sm:gap-x-6 md:gap-x-8 gap-y-6 sm:gap-y-8 py-4">
-                     {organizeLayoutByImage(groupedSystems.CONFERENCE).map((system, index) => (
-                       <div key={`conference-${index}`} className="flex items-center justify-center">
-                         <OfficeDesk
-                           key={`conference-system-${index}`}
-                           system={system}
-                           status={tickets.find(t => t.systemId === system.id)?.status || 'available'}
-                           onClick={() => handleSystemClick(system)}
-                         />
-                       </div>
-                     ))}
-                   </div>
-                 </div>
-              )}
-
-               {/* Message if no systems visible in Cabin section */}
-              {!groupedSystems.MD_CABIN && !groupedSystems.MEETING_ROOM && !groupedSystems.CONFERENCE && (
-                <div className="text-gray-400 text-center text-sm">No cabin systems available in this section.</div>
-              )}
-             </>
-          )}
-
-           {/* Message if no section is selected (shouldn't happen with default) */}
-          {!selectedSection && (
-             <div className="text-gray-400 text-center text-sm">Select a section to view the layout.</div>
-          )}
-
         </div>
       </div>
     </div>
@@ -2602,10 +2711,19 @@ function ReportsView({ tickets, setSelectedTicket }) {
 }
 
 const sectionFilters = [
-  { type: 'WORKSTATION', label: 'Workstations', icon: <Monitor size={16} className="text-blue-400" /> },
+  { type: 'WORKSTATION', label: 'Workstations', icon: <Monitor size={16} className="text-purple-400" /> },
   { type: 'MEETING_ROOM', label: 'Meeting Rooms', icon: <Users size={16} className="text-purple-400" /> },
   { type: 'MD_CABIN', label: 'MD Cabins', icon: <Award size={16} className="text-orange-400" /> },
   { type: 'TECHNICAL_WS', label: 'Technical WS', icon: <Cpu size={16} className="text-green-400" /> },
   { type: 'CONFERENCE', label: 'Conference', icon: <Phone size={16} className="text-red-400" /> },
   { type: 'TEAM_LEAD', label: 'Team Lead', icon: <Users size={16} className="text-yellow-400" /> }
 ];
+
+// Function to handle saving the new device ID
+const handleSaveNewDeviceId = (systemId, newId) => {
+  console.log(`Saving new ID ${newId} for system ${systemId}`);
+  // TODO: Implement logic to update the device ID in your data source (e.g., Firestore)
+  // This will likely involve finding the system/device by its old ID and updating its ID.
+  // You might also need to update related tickets if they reference the old ID.
+  // For now, just logging the action.
+};
