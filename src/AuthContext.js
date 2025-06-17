@@ -1,33 +1,52 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { auth } from './firebase';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setLoading(false);
-      console.log("Auth state changed:", user ? `User: ${user.email}` : "No user");
-    }, (error) => {
-      console.error("Auth error:", error);
-      setAuthError(error);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    // Initialize authentication state
+    const user = localStorage.getItem('user');
+    if (user) {
+      setCurrentUser(JSON.parse(user));
+    }
+    setLoading(false);
   }, []);
 
+  const login = (user) => {
+    localStorage.setItem('user', JSON.stringify(user));
+    setCurrentUser(user);
+    setError(null);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('user');
+    setCurrentUser(null);
+    setError(null);
+  };
+
   return (
-    <AuthContext.Provider value={{ currentUser, loading, authError }}>
+    <AuthContext.Provider
+      value={{
+        currentUser,
+        loading,
+        error,
+        login,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
